@@ -159,7 +159,7 @@ jobs:
             echo "## 📝 Lint Report"
             echo ""
 
-            SUMMARY_FILE="lint-results/summary-lint-errors.log"
+            SUMMARY_FILE="all-artifacts/lint-results/summary-lint-errors.log"
 
             if [[ -f "$SUMMARY_FILE" ]]; then
               if grep -q -E '^\[warn\]|^Error:' "$SUMMARY_FILE"; then
