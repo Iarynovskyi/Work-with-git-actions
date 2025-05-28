@@ -2,6 +2,6 @@
 
 exports[`Test Component renders the Test component correctly 1`] = `
 <h1>
-  Hello, Next.js!
+       Hello,     Next.js!      
 </h1>
 `;
