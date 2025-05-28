@@ -39,8 +39,11 @@ jobs:
           exit_code="${PIPESTATUS[0]}"
           
           SUMMARY_FILE="summary-lint-errors.log"
-          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > "$SUMMARY_FILE";
-          echo "No lint errors found." > "$SUMMARY_FILE"
+          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > "$SUMMARY_FILE" || true
+
+          if [ ! -s "$SUMMARY_FILE" ]; then
+          echo "✅ No lint errors found." > "$SUMMARY_FILE"
+          fi
           
           
           if [ $exit_code -ne 0 ]; then
