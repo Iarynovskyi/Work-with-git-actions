@@ -34,18 +34,18 @@ jobs:
       - name: Run ESLint
         run: |
           npm run lint 2>&1 | \
-          tee full-lint-${{ matrix.node-version }}.log
+          tee full-lint.log
           
           exit_code="${PIPESTATUS[0]}"
           
-          SUMMARY_FILE="summary-lint-errors-${{ matrix.node-version }}.log"
-          grep -E '^\[warn\]|^Error:|^Warning:' full-lint-${{ matrix.node-version }}.log > "$SUMMARY_FILE" || true;
+          SUMMARY_FILE="summary-lint-errors.log"
+          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > "$SUMMARY_FILE";
           echo "No lint errors found." > "$SUMMARY_FILE"
           
           
           if [ $exit_code -ne 0 ]; then
             echo ""
-            echo "❌ ESLint errors found. See summary-lint-errors-${{ matrix.node-version }}.log for details."
+            echo "❌ ESLint errors found. See summary-lint-errors.log for details."
             echo ""
           else
             echo ""
@@ -59,18 +59,10 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
-          name: lint-results-${{ matrix.node-version }}
+          name: lint-results
           path: |
-            full-lint-${{ matrix.node-version }}.log
-            summary-lint-errors-${{ matrix.node-version }}.log
-
-      - name: Check logs before uploading
-        if: success() || failure()
-        run: |
-          ls -la
-          echo "Listing logs:"
-          ls -l full-lint-${{ matrix.node-version }}.log || echo "ТЩ ТЩ full-lint-${{ matrix.node-version }}.log"
-          ls -l summary-lint-errors-${{ matrix.node-version }}.log || echo "ТЩ ТЩ summary-lint-errors-${{ matrix.node-version }}.log"
+            full-lint.log
+            summary-lint-errors.log
 
   run-tests:
     name: Run Tests
@@ -98,22 +90,20 @@ jobs:
         run: ls -la
 
       - name: Run Tests and generate logs
-        run: |
-          set -o pipefail
-      
+        run: |      
           echo ""
           echo "🚀 Run Tests..."
       
           npm run test -- --ci 2>&1 | \
-          tee "full-tests-${{ matrix.node-version }}.log"
+          tee "full-tests-results-${{ matrix.node-version }}.log"
       
           exit_code="${PIPESTATUS[0]}"
       
-          grep -E "Test Suites:|Tests:|Snapshots:|Time:" "full-tests-${{ matrix.node-version }}.log" > \
-          summary-tests-${{ matrix.node-version }}.log || echo "❌ Tests not found." > summary-tests-${{ matrix.node-version }}.log
+          grep -E "Test Suites:|Tests:|Snapshots:|Time:" "full-tests-results-${{ matrix.node-version }}.log" > \
+          summary-tests-results-${{ matrix.node-version }}.log || echo "❌ Tests not found." > summary-tests-results-${{ matrix.node-version }}.log
       
           awk '/Summary of all failing tests/,/Test Suites/{if ($0 !~ /Test Suites/) print}' \
-          "full-tests-${{ matrix.node-version }}.log" > \
+          "full-tests-results-${{ matrix.node-version }}.log" > \
           summary-tests-errors-${{ matrix.node-version }}.log || echo "✅ All tests passed successfully." > summary-tests-errors-${{ matrix.node-version }}.log
       
           if [ $exit_code -ne 0 ]; then
@@ -125,6 +115,7 @@ jobs:
             echo "✅ All tests are passed successfully."
             echo ""
           fi
+          ls -la
           
           exit "$exit_code"
 
@@ -137,17 +128,6 @@ jobs:
             full-tests-results-${{ matrix.node-version }}.log
             summary-tests-results-${{ matrix.node-version }}.log
             summary-tests-errors-${{ matrix.node-version }}.log
-
-      - name: Check logs before uploading
-        if: success() || failure()
-        run: |
-          ls -la
-          echo "Listing logs:"
-          ls -l full-tests-results-*.log || echo "No full-tests-results"
-          ls -l summary-tests-results-*.log || echo "No summary-tests-results"
-          ls -l summary-tests-errors-*.log || echo "No summary-tests-errors"
-  
-  
 
   generate-report:
     name: Generate Test Report
@@ -176,7 +156,7 @@ jobs:
             echo "## 📝 Lint Report"
             echo ""
 
-            SUMMARY_FILE="all-artifacts/lint-results/summary-lint-errors.log"
+            SUMMARY_FILE="summary-lint-errors.log"
 
             if [[ -f "$SUMMARY_FILE" ]]; then
               if grep -q -E '^\[warn\]|^Error:' "$SUMMARY_FILE"; then
@@ -207,8 +187,8 @@ jobs:
               TEST_VERSION=$(basename "$folder")
               NODE_VERSION=$(echo "$TEST_VERSION" | cut -d'-' -f3)
 
-              SUMMARY_FILE="$folder/summary-tests-results-${NODE_VERSION}-${MONGO_VERSION}.log"
-              ERRORS_FILE="$folder/summary-tests-errors-${NODE_VERSION}-${MONGO_VERSION}.log"
+              SUMMARY_FILE="$folder/summary-tests-results-${NODE_VERSION}.log"
+              ERRORS_FILE="$folder/summary-tests-errors-${NODE_VERSION}.log"
 
               echo "**🔹 Node.js Version:** $NODE_VERSION"
               echo ""
