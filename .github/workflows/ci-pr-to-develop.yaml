@@ -92,6 +92,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: List files before upload
+        run: ls -la
+
       - name: Run Tests and generate logs
         run: |
           set -o pipefail
