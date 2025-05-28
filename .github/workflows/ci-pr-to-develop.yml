@@ -51,7 +51,7 @@ jobs:
 
       - name: Fail if lint errors exist
         run: |
-          if [ -s summary-lint-errors.log ] && ! grep -q 'No lint errors found' summary-lint-errors.log; then
+          if [ -s summary-lint-errors.log ] && ! grep -q 'No lint errors' summary-lint-errors.log; then
             echo
             echo "❌ ESLint errors found. See summary-lint-errors.log for details."
             echo
