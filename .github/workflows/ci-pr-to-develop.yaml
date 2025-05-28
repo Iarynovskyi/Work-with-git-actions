@@ -30,12 +30,12 @@ jobs:
 
       - name: List files before upload
         run: ls -la
-        
+
       - name: Run ESLint
         run: |
           set -o pipefail
           npm run lint 2>&1 | \
-          tee full-lint.log
+          tee full-lint-${{ matrix.node-version }}.log
           
           exit_code="${PIPESTATUS[0]}"
 
@@ -69,6 +69,7 @@ jobs:
       - name: Check logs before uploading
         if: success() || failure()
         run: |
+          ls -la
           echo "Listing logs:"
           ls -l full-lint-${{ matrix.node-version }}.log || echo "ТЩ ТЩ full-lint-${{ matrix.node-version }}.log"
           ls -l summary-lint-errors-${{ matrix.node-version }}.log || echo "ТЩ ТЩ summary-lint-errors-${{ matrix.node-version }}.log"
@@ -142,6 +143,7 @@ jobs:
       - name: Check logs before uploading
         if: success() || failure()
         run: |
+          ls -la
           echo "Listing logs:"
           ls -l full-tests-results-*.log || echo "No full-tests-results"
           ls -l summary-tests-results-*.log || echo "No summary-tests-results"
