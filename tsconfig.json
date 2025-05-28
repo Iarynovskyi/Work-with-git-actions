@@ -18,13 +18,18 @@
         "name": "next"
       }
     ],
+    "baseUrl": "app",
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    "forceConsistentCasingInFileNames": true, // Enforce consistent casing in file names
+    "noFallthroughCasesInSwitch": true, // Prevent fallthrough cases in switch statements
+    "skipDefaultLibCheck": true, // Skip checking default library types for faster builds
+    "allowSyntheticDefaultImports": true // Allow synthetic default imports for compatibility
   },
   "include": [
-    "./next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+    "./next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "jest.config.ts"],
   "exclude": [
-    "../git-actions/node_modules"
+    "node_modules"
   ]
 }
