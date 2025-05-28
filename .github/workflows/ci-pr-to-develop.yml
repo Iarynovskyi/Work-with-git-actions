@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+  workflow_dispatch:
 
 jobs:
   run-lint:
@@ -31,9 +32,13 @@ jobs:
       - name: Extract lint summary
         run: |
           if grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > summary-lint-errors.log; then
-          echo "Lint issues found."
+            echo
+            echo "⚠️️ ESLint issues found."
+            echo
           else
-          echo "No lint errors found." > summary-lint-errors.log
+            echo
+            echo "☑️ No ESLint errors." > summary-lint-errors.log
+            echo
           fi
 
       - name: Upload lint logs
@@ -47,32 +52,12 @@ jobs:
       - name: Fail if lint errors exist
         run: |
           if [ -s summary-lint-errors.log ] && ! grep -q 'No lint errors found' summary-lint-errors.log; then
+            echo
             echo "❌ ESLint errors found. See summary-lint-errors.log for details."
+            echo
             exit 1
           else
-            echo "✅ No lint errors found."
+            echo
+            echo "✅ No lint errors."
+            echo
           fi
-
-#    strategy:
-#      matrix:
-#        node-version: [ 18.x ]
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#
-#      - name: Setup Node.js ${{ matrix.node-version }}
-#        uses: actions/setup-node@v4
-#        with:
-#          node-version: ${{ matrix.node-version }}
-#          cache: 'npm'
-#
-#      - name: Install dependencies # Крок 3: Встановити залежності
-#        run: npm ci # 'ci' замість 'install' для CI - швидше і надійніше
-#
-#      - name: Run ESLint # Крок 4: Запустити ESLint
-#        run: npm run lint # Або команда, яку ти використовуєш для лінтингу, наприклад, 'npx eslint . --max-warnings=0'
-#        # Переконайся, що скрипт 'lint' у package.json також використовує --max-warnings=0
-#        # або додай його сюди напряму
-#
-#      - name: Run tests # Крок 5: Запустити тести
-#        run: npm test
