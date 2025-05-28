@@ -1,4 +1,4 @@
-name: PR (develop)
+name: Run ESLint for PR to develop
 
 on:
   pull_request:
@@ -46,9 +46,11 @@ jobs:
 
       - name: Fail if lint errors exist
         run: |
-          if grep -q 'error' summary-lint-errors.log; then
+          if [ -s summary-lint-errors.log ] && ! grep -q 'No lint errors found' summary-lint-errors.log; then
             echo "❌ ESLint errors found. See summary-lint-errors.log for details."
             exit 1
+          else
+            echo "✅ No lint errors found."
           fi
 
 #    strategy:
