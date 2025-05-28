@@ -1,4 +1,4 @@
-name: CI
+name: PR (develop)
 
 on:
   pull_request:
@@ -62,6 +62,12 @@ jobs:
             full-lint-${{ matrix.node-version }}.log
             summary-lint-errors-${{ matrix.node-version }}.log
 
+      - name: Check logs before uploading
+        run: |
+          echo "Listing logs:"
+          ls -l full-lint-${{ matrix.node-version }}.log || echo "ТЩ ТЩ full-lint-${{ matrix.node-version }}.log"
+          ls -l summary-lint-errors-${{ matrix.node-version }}.log || echo "ТЩ ТЩ summary-lint-errors-${{ matrix.node-version }}.log"
+
   run-tests:
     name: Run Tests
     runs-on: 'ubuntu-latest'
@@ -123,7 +129,15 @@ jobs:
             full-tests-results-${{ matrix.node-version }}.log
             summary-tests-results-${{ matrix.node-version }}.log
             summary-tests-errors-${{ matrix.node-version }}.log
-            
+
+      - name: Check logs before uploading
+        run: |
+          echo "Listing logs:"
+          ls -l full-tests-results-*.log || echo "No full-tests-results"
+          ls -l summary-tests-results-*.log || echo "No summary-tests-results"
+          ls -l summary-tests-errors-*.log || echo "No summary-tests-errors"
+  
+  
 
   generate-report:
     name: Generate Test Report
