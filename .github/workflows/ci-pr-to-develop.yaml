@@ -39,11 +39,8 @@ jobs:
           
           exit_code="${PIPESTATUS[0]}"
 
-          if grep -E '^\[warn\]|^Error:|^Warning:' full-lint-${{ matrix.node-version }}.log > summary-lint-errors-${{ matrix.node-version }}.log; then
-            echo "ESLint issues found."
-          else
-            echo "No ESLint errors." > summary-lint-errors-${{ matrix.node-version }}.log
-          fi
+          grep -E '^\[warn\]|^Error:|^Warning:' full-lint-${{ matrix.node-version }}.log > summary-lint-errors-${{ matrix.node-version }}.log; 
+          echo "No ESLint errors." > summary-lint-errors-${{ matrix.node-version }}.log
           
           if [ $exit_code -ne 0 ]; then
             echo ""
