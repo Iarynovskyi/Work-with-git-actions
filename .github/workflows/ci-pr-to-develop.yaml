@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: List files before upload
+        run: ls -la
+        
       - name: Run ESLint
         run: |
           set -o pipefail
