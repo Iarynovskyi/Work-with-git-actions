@@ -32,13 +32,9 @@ jobs:
       - name: Extract lint summary
         run: |
           if grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > summary-lint-errors.log; then
-            echo
-            echo "⚠️️ ESLint issues found."
-            echo
+            echo "ESLint issues found."
           else
-            echo
-            echo "☑️ No ESLint errors." > summary-lint-errors.log
-            echo
+            echo "No ESLint errors." > summary-lint-errors.log
           fi
 
       - name: Upload lint logs
@@ -51,7 +47,7 @@ jobs:
 
       - name: Fail if lint errors exist
         run: |
-          if [ -s summary-lint-errors.log ] && ! grep -q 'No lint errors' summary-lint-errors.log; then
+          if [ -s summary-lint-errors.log ] && ! grep -q 'No ESLint errors' summary-lint-errors.log; then
             echo
             echo "❌ ESLint errors found. See summary-lint-errors.log for details."
             echo
