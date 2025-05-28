@@ -1,10 +1,3 @@
-
-
-
-export default    function Page() {
-
-  console.log('qwqw');
-
-
-  return     <h1>        Hello, Next.js!           </h1>;
+export default function Page() {
+  return <h1> Hello, Next.js! </h1>
 }
