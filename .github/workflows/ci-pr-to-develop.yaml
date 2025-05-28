@@ -28,9 +28,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: List files before upload
-        run: ls -la
-
       - name: Run ESLint
         run: |
           npm run lint 2>&1 | \
@@ -44,7 +41,6 @@ jobs:
           if [ ! -s "$SUMMARY_FILE" ]; then
           echo "✅ No lint errors found." > "$SUMMARY_FILE"
           fi
-          
           
           if [ $exit_code -ne 0 ]; then
             echo ""
@@ -89,12 +85,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: List files before upload
-        run: ls -la
-
       - name: Run Tests and generate logs
         run: |      
-          echo ""
           echo "🚀 Run Tests..."
       
           npm run test -- --ci 2>&1 | \
@@ -118,7 +110,6 @@ jobs:
             echo "✅ All tests are passed successfully."
             echo ""
           fi
-          ls -la
           
           exit "$exit_code"
 
