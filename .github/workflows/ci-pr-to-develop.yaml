@@ -42,7 +42,7 @@ jobs:
           grep -E '^\[warn\]|^Error:|^Warning:' full-lint-${{ matrix.node-version }}.log > \
           summary-lint-errors-${{ matrix.node-version }}.log  || true;
           
-          if [ ! -s "$SUMMARY_FILE" ]; then
+          if [ ! -s summary-lint-errors-${{ matrix.node-version }}.log ]; then
           echo "No ESLint errors." > "$SUMMARY_FILE"
           fi         
           
