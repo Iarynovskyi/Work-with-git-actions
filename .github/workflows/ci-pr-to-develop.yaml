@@ -117,9 +117,9 @@ jobs:
       - name: Upload Test Logs
         uses: actions/upload-artifact@v4
         with:
-          name: tests-results-${{ matrix.node-version }}-${{ matrix.mongodb-version }}
+          name: tests-results-${{ matrix.node-version }}
           path: |
-            full-tests-results-${{ matrix.node-version }}-${{ matrix.mongodb-version }}.log
-            summary-tests-results-${{ matrix.node-version }}-${{ matrix.mongodb-version }}.log
-            summary-tests-errors-${{ matrix.node-version }}-${{ matrix.mongodb-version }}.log
+            full-tests-results-${{ matrix.node-version }}.log
+            summary-tests-results-${{ matrix.node-version }}.log
+            summary-tests-errors-${{ matrix.node-version }}.log
 
