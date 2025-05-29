@@ -145,8 +145,9 @@ jobs:
 
       - name: Build Docker image
         run: |
-          {
           LOG_FILE=docker-build-${{ github.sha }}.log
+          
+          {
           docker build -t my-app-image:${{ github.sha }} . 
           docker image inspect my-app-image:${{ github.sha }} > /dev/null
           echo "✅ Docker image built successfully."
