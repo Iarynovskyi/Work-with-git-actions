@@ -30,32 +30,19 @@ jobs:
 
       - name: Run ESLint
         run: |
-          npm run lint 2>&1 | \
-          tee full-lint.log
+          npm run lint 2>&1 | tee full-lint.log
           exit_code="${PIPESTATUS[0]}"
-
-          LINT_STATUS_FILE="lint-status.txt"
-          SUMMARY_FILE="summary-lint-errors.log"
-          > "$SUMMARY_FILE"
           
-          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log >> "$SUMMARY_FILE" || true
+          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > summary-lint-errors.log || \
+            echo "✅ No lint issues found." > summary-lint-errors.log
 
-          if [ "$exit_code" -eq 0 ]; then
-            echo "SUCCESS" > "$LINT_STATUS_FILE"
-
-            if [ ! -s "$SUMMARY_FILE" ]; then
-                echo "✅ No lint issues found." > "$SUMMARY_FILE"
-            fi
-            echo ""
-            echo "✅ No lint errors."
-            echo ""
-          else
-            echo "FAILURE" > "$LINT_STATUS_FILE"
-            if [ ! -s "$SUMMARY_FILE" ]; then
-                echo "ESLint failed with exit code $exit_code, but no specific errors/warnings were grepped from full-lint.log." > "$SUMMARY_FILE"
-            fi
+          if [ "$exit_code" -ne 0 ]; then
             echo ""
             echo "❌ ESLint errors found. See summary-lint-errors.log for details."
+            echo ""
+          else
+            echo ""
+            echo "✅ No lint errors."
             echo ""
           fi
           
@@ -69,7 +56,6 @@ jobs:
           path: |
             full-lint.log
             summary-lint-errors.log
-            lint-status.txt
 
   run-tests:
     name: Run Tests
@@ -97,24 +83,17 @@ jobs:
         run: |      
           echo "🚀 Run Tests..."
       
-          npm run test -- --ci 2>&1 | \
-          tee "full-tests-results-${{ matrix.node-version }}.log"
+          npm run test -- --ci 2>&1 | tee "full-tests-results-${{ matrix.node-version }}.log"
       
           exit_code="${PIPESTATUS[0]}"
-      
+          
           grep -E "Test Suites:|Tests:|Snapshots:|Time:" "full-tests-results-${{ matrix.node-version }}.log" > \
-          summary-tests-results-${{ matrix.node-version }}.log || echo "❌ Tests not found." > summary-tests-results-${{ matrix.node-version }}.log
+            summary-tests-results-${{ matrix.node-version }}.log || \
+            echo "❌ Test summary not found." > summary-tests-results-${{ matrix.node-version }}.log
 
-          > "summary-tests-errors-${{ matrix.node-version }}.log"
-          awk '/Summary of all failing tests/,/Test Suites/{if ($0 !~ /Test Suites/) print}' \
-          "full-tests-results-${{ matrix.node-version }}.log" > \
-          summary-tests-errors-${{ matrix.node-version }}.log || echo "✅ All tests passed successfully." > summary-tests-errors-${{ matrix.node-version }}.log
-
-          if [ "$exit_code" -eq 0 ] && [ ! -s "summary-tests-errors-${{ matrix.node-version }}.log" ]; then
-            echo "✅ All tests passed successfully." > "summary-tests-errors-${{ matrix.node-version }}.log"
-          elif [ "$exit_code" -ne 0 ] && [ ! -s "summary-tests-errors-${{ matrix.node-version }}.log" ]; then
-            echo "Tests failed, but no specific error summary was grepped. Check full log." > "summary-tests-errors-${{ matrix.node-version }}.log"
-          fi
+          awk '/Summary of all failing tests/,/Test Suites/{if ($0 !~ /Test Suites/ && $0 !~ /^$/ && NR > 1) print}' \
+            "full-tests-results-${{ matrix.node-version }}.log" > \
+            "summary-tests-errors-${{ matrix.node-version }}.log"
           
           if [ $exit_code -ne 0 ]; then
             echo ""
@@ -168,22 +147,24 @@ jobs:
 
       - name: Determine overall status
         id: overall_status
+        env:
+          LINT_JOB_RESULT_ENV: ${{ needs.run-lint.result }}
+          TEST_JOB_RESULT_ENV: ${{ needs.run-tests.result }}
+          DOCKER_BUILD_JOB_RESULT_ENV: ${{ needs.docker-build.result }}
         run: |
-          LINT_OUTCOME="${{ needs.run-lint.outputs.outcome }}"
-          TEST_OUTCOME="${{ needs.run-tests.outputs.outcome }}"
-          DOCKER_BUILD_JOB_RESULT_ENV: ${{ needs.build-docker.result }}
+          echo "Lint Job Result from ENV: '$LINT_JOB_RESULT_ENV'"
+          echo "Test Job Result from ENV: '$TEST_JOB_RESULT_ENV'"
+          echo "Docker Build Job Result from ENV: '$DOCKER_BUILD_JOB_RESULT_ENV'"
           
           OVERALL_ICON="✅"
           
           if [[ "$LINT_JOB_RESULT_ENV" != "success" || \
                 "$TEST_JOB_RESULT_ENV" != "success" || \
-                "$DOCKER_BUILD_JOB_RESULT_ENV" != "success" ]]; then # <--- Додано перевірку
+                "$DOCKER_BUILD_JOB_RESULT_ENV" != "success" ]]; then 
             OVERALL_ICON="❌"
           fi
           
-          echo "Final Lint Status for Icon: $FINAL_LINT_STATUS"
-          echo "Final Test Status for Icon: $FINAL_TEST_STATUS"
-          echo "Determined Overall Icon: $OVERALL_ICON"        
+          echo "Determined Overall Icon" >> $OVERALL_ICON"       
 
           echo "OVERALL_ICON=$OVERALL_ICON" >> $GITHUB_OUTPUT
 
@@ -194,8 +175,10 @@ jobs:
 
       - name: Generate Test Report
         run: |
+          CI_MARKER_BASE="# CI Report"
           OVERALL_ICON_FROM_STEP="${{ steps.overall_status.outputs.OVERALL_ICON }}"
-          CI_MARKER="# ✅ CI Report - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
+          CI_MARKER="# $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
+          
           {
             echo "$CI_MARKER"
             echo ""
@@ -207,48 +190,20 @@ jobs:
             echo ""
 
             SUMMARY_FILE="all-artifacts/lint-results/summary-lint-errors.log"
-            LINT_STATUS_FILE="all-artifacts/lint-results/lint-status.txt"
 
-            if [[ -f "$LINT_STATUS_FILE" ]]; then
-              LINT_STATUS_CONTENT=$(cat "$LINT_STATUS_FILE")
-              if [[ "$LINT_STATUS_CONTENT" == "SUCCESS" ]]; then
-                echo '```'
-                if [[ -f "$SUMMARY_FILE" && -s "$SUMMARY_FILE" ]]; then
-                    cat "$SUMMARY_FILE"
-                else
-                    echo "✅ No lint issues found."
-                fi
-                echo '```'
-              else
+            if [[ -f "$SUMMARY_FILE" ]]; then
+              if grep -q -E '^\[warn\]|^Error:|^Warning:' "$SUMMARY_FILE"; then
                 echo "**❌ Lint Errors Found:**"
                 echo '```'
-                if [[ -f "$SUMMARY_FILE" && -s "$SUMMARY_FILE" ]]; then
-                  cat "$SUMMARY_FILE"
-                else
-                  echo "Error details not found in summary file, but ESLint indicated failure."
-                fi
+                cat "$SUMMARY_FILE"
+                echo '```'
+              else 
+                echo '```'
+                cat "$SUMMARY_FILE" # Або просто: echo "✅ No lint issues found."
                 echo '```'
               fi
             else
-              echo "⚠️ Lint status file not found. Fallback check on summary:"
-              if [[ -f "$SUMMARY_FILE" ]]; then
-                if grep -q "✅ No lint errors found." "$SUMMARY_FILE"; then
-                    echo '```'
-                    cat "$SUMMARY_FILE"
-                    echo '```'
-                elif grep -q -E '^\[warn\]|^Error:|^Warning:' "$SUMMARY_FILE"; then # Перевірка на реальні помилки/попередження
-                    echo "**❌ Lint Errors Found (fallback):**"
-                    echo '```'
-                    cat "$SUMMARY_FILE"
-                    echo '```'
-                else
-                    echo '```'
-                    echo "Lint summary content is inconclusive or empty."
-                    echo '```'
-                fi
-              else
-                echo "⚠️ Lint report and status not found."
-              fi
+              echo "⚠️ Lint report not found."
             fi
             printf "\n"
           } >> report.txt
@@ -277,19 +232,17 @@ jobs:
                 echo "⚠️ No test summary available for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
 
-              if [[ -f "$ERRORS_FILE" ]] && ! grep -q "✅ All tests passed successfully." "$ERRORS_FILE"; then
-                if [[ -s "$ERRORS_FILE" ]]; then
-                    echo "**❌ Test Errors:**"
-                    echo '```'
-                    cat "$ERRORS_FILE"
-                    echo '```'
-                fi
-              elif [[ -f "$ERRORS_FILE" ]] && grep -q "✅ All tests passed successfully." "$ERRORS_FILE"; then
+              if [[ -f "$ERRORS_FILE" && -s "$ERRORS_FILE" ]]; then
+                echo "**❌ Test Errors:**"
+                echo '```'
+                cat "$ERRORS_FILE"
+                echo '```'
+              elif [[ -f "$ERRORS_FILE" ]]; then # Файл існує, але порожній - значить помилок не було
                  echo '```'
-                 echo "✅ All tests passed successfully."
+                 echo "✅ All tests passed successfully for Node $NODE_VERSION_FROM_FOLDER_NAME."
                  echo '```'
-              else
-                echo "⚠️ No specific test error log available for Node $NODE_VERSION_FROM_FOLDER_NAME, or tests passed."
+              else # Файл навіть не існує
+                echo "⚠️ No specific test error log available for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
               echo ""
             done
@@ -305,7 +258,7 @@ jobs:
 
       - name: Update CI Report in PR
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           if [[ -z "$PR_NUMBER" ]]; then
@@ -313,8 +266,11 @@ jobs:
             exit 0
           fi
 
-          COMMENT_ID=$(gh api "repos/:owner/:repo/issues/$PR_NUMBER/comments" --jq '.[] | select(.user.login=="github-actions[bot]") | select(.body | contains("# ✅ CI Report")) | .id')
-
+          COMMENT_MARKER_BASE="# CI Report"
+          COMMENT_ID=$(gh api "repos/:owner/:repo/issues/$PR_NUMBER/comments" --jq '.[] | \
+          select(.user.login=="github-actions[bot]") | \
+          select(.body | contains(\"$COMMENT_MARKER_BASE"\)) | .id'| head -n 1)
+          
           if [[ -n "$COMMENT_ID" ]]; then
             echo "Updating existing CI report comment: $COMMENT_ID"
             gh api "repos/:owner/:repo/issues/comments/$COMMENT_ID" -X PATCH -f body="$(cat report.txt)"
