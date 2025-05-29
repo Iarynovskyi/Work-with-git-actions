@@ -37,7 +37,7 @@ jobs:
         run: |
           # 1. Запускаємо ESLint, зберігаємо exit code
           npm run lint > full-lint.log 2>&1
-          exit_code=$?
+          exit_code="${PIPESTATUS[0]}"
 
           # 2. Summary файл
           SUMMARY_FILE="summary-lint-errors.log"
