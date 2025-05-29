@@ -41,6 +41,10 @@ jobs:
           grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > "$SUMMARY_LINT_FILE" || \
           echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
           
+          echo "--- Content of summary-lint-errors.log (in run-lint) ---"
+          cat "$SUMMARY_LINT_FILE"
+          echo "--- End of content ---"
+          
           if [ "$exit_code" -ne 0 ]; then
             echo ""
             echo "❌ ESLint errors found. See $SUMMARY_LINT_FILE for details."
@@ -207,28 +211,38 @@ jobs:
             echo ""
           } > report.txt
 
-          # 📝 Lint Report
-          {
+          LINT_SUMMARY_PATH_FOR_CHECK="${{ github.workspace }}/all-artifacts/lint-results/summary-lint-errors.log"
+
+          echo "--- Pre-check for Lint Summary (outside redirect block) ---"
+          if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then
+            echo "File $LINT_SUMMARY_PATH_FOR_CHECK EXISTS (pre-check)."
+          else
+            echo "File $LINT_SUMMARY_PATH_FOR_CHECK DOES NOT EXIST (pre-check)."
+            echo "Current directory (pwd): $(pwd)"
+            echo "Listing all-artifacts (pwd):"
+            ls -R all-artifacts || echo "all-artifacts directory not found here"
+          fi
+          echo "--- End of Pre-check ---"
+
+          { 
             echo "## 📝 Lint Report"
             echo ""
 
-            LINT_SUMMARY_PATH_FOR_CHECK="all-artifacts/lint-results/summary-lint-errors.log"
-            echo "Checking for Lint Summary at: $LINT_SUMMARY_PATH_FOR_CHECK" # Для діагностики
+            echo "Checking for Lint Summary (inside redirect block) at: $LINT_SUMMARY_PATH_FOR_CHECK" # Для діагностики
 
-            if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then # Використовуємо змінну або прямий шлях
-              echo "Lint Summary File FOUND." # Для діагностики
-              if grep -q "✅ No lint issues found." "$LINT_SUMMARY_PATH_FOR_CHECK"; then
+            if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then 
+              echo "Lint Summary File FOUND (inside redirect block)." # Для діагностики
+              if grep -q -E '\[warn\]|Error:|Warning:' "$LINT_SUMMARY_PATH_FOR_CHECK"; then
                 echo '```'
                 cat "$LINT_SUMMARY_PATH_FOR_CHECK"
                 echo '```'
-              else 
-                echo "**❌ Lint Errors Found:**"
+              else
                 echo '```'
-                cat "$LINT_SUMMARY_PATH_FOR_CHECK"
+                echo "✅ No lint issues found." # Або cat "$LINT_SUMMARY_PATH_FOR_CHECK"
                 echo '```'
               fi
             else
-              echo "Lint Summary File NOT FOUND." # Для діагностики
+              echo "Lint Summary File NOT FOUND (inside redirect block)."
               echo "⚠️ Lint report file not found at $LINT_SUMMARY_PATH_FOR_CHECK."
             fi
             printf "\n"
