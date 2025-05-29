@@ -116,9 +116,7 @@ jobs:
             echo "✅ All tests are passed successfully."
             echo ""
           fi
-          echo "--- Files in current directory (run-tests) ---"
-          ls -l
-          
+         
           exit "$exit_code"
 
       - name: Upload Test Logs
@@ -148,6 +146,8 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t my-app-image:${{ github.sha }} .
+          docker image inspect my-app-image:${{ github.sha }} > /dev/null
+          echo "✅ Docker image built successfully."
     
 
   generate-report:
