@@ -52,7 +52,7 @@ jobs:
             echo ""
             echo "✅ No lint errors."
             echo ""
-            echo "::set-output name=outcome::success"
+            echo "outcome=success" >> $GITHUB_OUTPUT
           else
             echo "FAILURE" > "$LINT_STATUS_FILE"
             if [ ! -s "$SUMMARY_FILE" ]; then
@@ -61,7 +61,7 @@ jobs:
             echo ""
             echo "❌ ESLint errors found. See summary-lint-errors.log for details."
             echo ""
-            echo "::set-output name=outcome::failure"
+            echo "outcome=failure" >> $GITHUB_OUTPUT
           fi
           
           exit "$exit_code"
@@ -121,12 +121,12 @@ jobs:
             echo ""
             echo "❌ Tests are failed. Please check summary-tests-errors-${{ matrix.node-version }}.log."
             echo ""
-            echo "::set-output name=outcome::failure"
+            echo "outcome=failure" >> $GITHUB_OUTPUT
           else
             echo ""
             echo "✅ All tests are passed successfully."
             echo ""
-            echo "::set-output name=outcome::success"
+            echo "outcome=success" >> $GITHUB_OUTPUT
           fi
           
           exit "$exit_code"
