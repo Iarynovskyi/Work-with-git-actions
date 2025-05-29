@@ -6,6 +6,10 @@ on:
       - develop
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   run-lint:
     name: Run ESLint
@@ -33,12 +37,13 @@ jobs:
           npm run lint 2>&1 | tee full-lint.log
           exit_code="${PIPESTATUS[0]}"
           
-          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > summary-lint-errors.log || \
-            echo "✅ No lint issues found." > summary-lint-errors.log
-
+          SUMMARY_LINT_FILE="summary-lint-errors.log"
+          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > "$SUMMARY_LINT_FILE" || \
+          echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
+          
           if [ "$exit_code" -ne 0 ]; then
             echo ""
-            echo "❌ ESLint errors found. See summary-lint-errors.log for details."
+            echo "❌ ESLint errors found. See $SUMMARY_LINT_FILE for details."
             echo ""
           else
             echo ""
@@ -156,17 +161,22 @@ jobs:
           echo "Test Job Result from ENV: '$TEST_JOB_RESULT_ENV'"
           echo "Docker Build Job Result from ENV: '$DOCKER_BUILD_JOB_RESULT_ENV'"
           
-          OVERALL_ICON="✅"
+          echo "Before IF: OVERALL_ICON_VAR is $OVERALL_ICON_VAR"
+          echo "Condition LINT: [[ \"$LINT_JOB_RESULT_ENV\" != \"success\" ]]"
+          echo "Condition TEST: [[ \"$TEST_JOB_RESULT_ENV\" != \"success\" ]]"
+          echo "Condition DOCKER: [[ \"$DOCKER_BUILD_JOB_RESULT_ENV\" != \"success\" ]]"
           
           if [[ "$LINT_JOB_RESULT_ENV" != "success" || \
                 "$TEST_JOB_RESULT_ENV" != "success" || \
-                "$DOCKER_BUILD_JOB_RESULT_ENV" != "success" ]]; then 
-            OVERALL_ICON="❌"
+                "$DOCKER_BUILD_JOB_RESULT_ENV" != "success" ]]; then
+            echo "Condition MET: At least one job did not succeed."
+            OVERALL_ICON_VAR="❌"
+          else
+            echo "Condition NOT MET: All jobs succeeded (or were not 'failure'/'skipped' in a way that triggers the condition)."
           fi
           
-          echo "Determined Overall Icon" >> $OVERALL_ICON      
-
-          echo "OVERALL_ICON=$OVERALL_ICON" >> $GITHUB_OUTPUT
+          echo "After IF: OVERALL_ICON_VAR is $OVERALL_ICON_VAR"
+          echo "OVERALL_ICON=$OVERALL_ICON_VAR" >> $GITHUB_OUTPUT
 
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -177,6 +187,7 @@ jobs:
         run: |
           CI_MARKER_BASE="# CI Report"
           OVERALL_ICON_FROM_STEP="${{ steps.overall_status.outputs.OVERALL_ICON }}"
+          echo "Received OVERALL_ICON_FROM_STEP: '$OVERALL_ICON_FROM_STEP'"
           CI_MARKER="# $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
           
           {
@@ -189,17 +200,17 @@ jobs:
             echo "## 📝 Lint Report"
             echo ""
 
-            SUMMARY_FILE="all-artifacts/lint-results/summary-lint-errors.log"
+            SUMMARY_LINT_FILE_PATH="all-artifacts/lint-results/summary-lint-errors.log"
 
             if [[ -f "$SUMMARY_FILE" ]]; then
-              if grep -q -E '^\[warn\]|^Error:|^Warning:' "$SUMMARY_FILE"; then
-                echo "**❌ Lint Errors Found:**"
+              if grep -q "✅ No lint issues found." "$SUMMARY_LINT_FILE_PATH"; then
                 echo '```'
-                cat "$SUMMARY_FILE"
+                cat "$SUMMARY_LINT_FILE_PATH"
                 echo '```'
               else 
+                echo "**❌ Lint Errors Found:**"
                 echo '```'
-                cat "$SUMMARY_FILE" # Або просто: echo "✅ No lint issues found."
+                cat "$SUMMARY_LINT_FILE_PATH"
                 echo '```'
               fi
             else
