@@ -212,21 +212,24 @@ jobs:
             echo "## 📝 Lint Report"
             echo ""
 
-            SUMMARY_LINT_FILE_PATH="all-artifacts/lint-results/summary-lint-errors.log"
+            LINT_SUMMARY_PATH_FOR_CHECK="all-artifacts/lint-results/summary-lint-errors.log"
+            echo "Checking for Lint Summary at: $LINT_SUMMARY_PATH_FOR_CHECK" # Для діагностики
 
-            if [[ -f "$SUMMARY_FILE" ]]; then
-              if grep -q "✅ No lint issues found." "$SUMMARY_LINT_FILE_PATH"; then
+            if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then # Використовуємо змінну або прямий шлях
+              echo "Lint Summary File FOUND." # Для діагностики
+              if grep -q "✅ No lint issues found." "$LINT_SUMMARY_PATH_FOR_CHECK"; then
                 echo '```'
-                cat "$SUMMARY_LINT_FILE_PATH"
+                cat "$LINT_SUMMARY_PATH_FOR_CHECK"
                 echo '```'
               else 
                 echo "**❌ Lint Errors Found:**"
                 echo '```'
-                cat "$SUMMARY_LINT_FILE_PATH"
+                cat "$LINT_SUMMARY_PATH_FOR_CHECK"
                 echo '```'
               fi
             else
-              echo "⚠️ Lint report file not found at $SUMMARY_LINT_FILE_PATH."
+              echo "Lint Summary File NOT FOUND." # Для діагностики
+              echo "⚠️ Lint report file not found at $LINT_SUMMARY_PATH_FOR_CHECK."
             fi
             printf "\n"
           } >> report.txt
@@ -297,10 +300,10 @@ jobs:
           COMMENT_AUTHOR="github-actions[bot]"
           echo "Searching for existing PR comment with marker: '$COMMENT_MARKER_BASE_CONTENT' by author '$COMMENT_AUTHOR'"
           
+          JQ_QUERY=".[] | select(.user.login==\"$COMMENT_AUTHOR\" and (.body | contains(\"$COMMENT_MARKER_BASE_CONTENT\"))) | .id"
+  
           COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.user.login==$author and (.body | contains($marker))) | .id' \
-            --arg author "$COMMENT_AUTHOR" \
-            --arg marker "$COMMENT_MARKER_BASE_CONTENT" | head -n 1)
+          --jq "$JQ_QUERY" | head -n 1)
           
           REPORT_CONTENT_FILE="report.txt"
           
