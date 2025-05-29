@@ -38,10 +38,21 @@ jobs:
           exit_code="${PIPESTATUS[0]}"
           
           SUMMARY_LINT_FILE="summary-lint-errors.log"
-          grep -E '^\[warn\]|^Error:|^Warning:' full-lint.log > "$SUMMARY_LINT_FILE" || \
-          echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
           
-          echo "--- Content of summary-lint-errors.log (in run-lint) ---"
+          # Крок 1: Запускаємо grep і зберігаємо його вивід
+          grep_output=$(grep -E '\[warn\]|Error:|Warning:' full-lint.log)
+          grep_exit_code=$? # Код виходу grep
+          
+          # Крок 2: Записуємо у файл на основі результату grep
+          if [ "$grep_exit_code" -eq 0 ]; then
+            # grep щось знайшов
+            echo "$grep_output" > "$SUMMARY_LINT_FILE"
+          else
+            # grep нічого не знайшов (або була інша помилка grep)
+            echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
+          fi
+          
+          echo "--- Content of summary-lint-errors.log (in run-lint) AFTER explicit write ---"
           cat "$SUMMARY_LINT_FILE"
           echo "--- End of content ---"
           
@@ -54,6 +65,7 @@ jobs:
             echo "✅ No lint errors."
             echo ""
           fi
+          echo "--- Files in current directory (run-lint) ---"
           ls -l 
           exit "$exit_code"
 
@@ -310,25 +322,25 @@ jobs:
             exit 0
           fi
 
-          COMMENT_MARKER_BASE="# CI Report"
-          COMMENT_AUTHOR="github-actions[bot]"
-          echo "Searching for existing PR comment with marker: '$COMMENT_MARKER_BASE_CONTENT' by author '$COMMENT_AUTHOR'"
-          
-          JQ_QUERY=".[] | select(.user.login==\"$COMMENT_AUTHOR\" and (.body | contains(\"$COMMENT_MARKER_BASE_CONTENT\"))) | .id"
-  
+          TARGET_COMMENT_AUTHOR="github-actions[bot]" 
+          TARGET_COMMENT_MARKER="# CI Report"   
+
+          echo "Searching for existing PR comment with marker: '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'"
+
           COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
-          --jq "$JQ_QUERY" | head -n 1)
+            --jq '.[] | select(.user.login==$author and (.body | contains($marker))) | .id' \
+            --arg author "$TARGET_COMMENT_AUTHOR" \
+            --arg marker "$TARGET_COMMENT_MARKER" | head -n 1) # head -n 1 ВАЖЛИВО!
           
-          REPORT_CONTENT_FILE="report.txt"
-          
+          REPORT_CONTENT_FILE="report.txt" 
+
           if [[ -n "$COMMENT_ID" ]]; then
-            echo "Updating existing CI report comment: $COMMENT_ID"
-            # Передаємо тіло коментаря з файлу через --field або -f body=@filename
+            echo "Updating existing CI report comment ID: $COMMENT_ID"
             gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
               -X PATCH \
               --field body="$(cat $REPORT_CONTENT_FILE)" 
           else
-            echo "No previous CI report found with the specified marker and author, creating a new one..."
+            echo "No previous CI report found with marker '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'. Creating a new one..."
             gh pr comment "$PR_NUMBER" --body-file "$REPORT_CONTENT_FILE"
           fi
 
