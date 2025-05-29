@@ -33,35 +33,26 @@ jobs:
         run: npm ci
 
       - name: Run ESLint
+        shell: bash
         run: |
-          npm run lint 2>&1 | tee full-lint.log
-          exit_code=$?
-          
-          SUMMARY_LINT_FILE="summary-lint-errors.log"
-          
-          grep_output=$(grep -E '\[warn\]|Error:|Warning:' full-lint.log)
-          grep_exit_code=$? # Код виходу grep
-          
-          if [ "$grep_exit_code" -eq 0 ]; then
-            echo "$grep_output" > "$SUMMARY_LINT_FILE"
-          else
-            echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
+          set +e
+          npm run lint > full-lint.log 2>&1
+          exit_code="${PIPESTATUS[0]}"
+          set -e
+
+          SUMMARY_FILE="summary-lint-errors.log"
+          grep -E '\[warn\]|Error:|Warning:' full-lint.log > "$SUMMARY_FILE" || true
+
+          if [ ! -s "$SUMMARY_FILE" ]; then
+            echo "✅ No lint errors found." > "$SUMMARY_FILE"
           fi
-          
-          echo "--- Content of summary-lint-errors.log (in run-lint) AFTER explicit write ---"
-          cat "$SUMMARY_LINT_FILE"
-          echo "--- End of content ---"
-          
+
           if [ "$exit_code" -ne 0 ]; then
-            echo ""
-            echo "❌ ESLint errors found. See $SUMMARY_LINT_FILE for details."
-            echo ""
+            echo "❌ ESLint errors found."
           else
-            echo ""
             echo "✅ No lint errors."
-            echo ""
           fi
-          
+
           exit "$exit_code"
 
       - name: Upload lint logs
@@ -102,19 +93,20 @@ jobs:
           npm run test -- --ci 2>&1 | tee "full-tests-results-${{ matrix.node-version }}.log"
       
           exit_code="${PIPESTATUS[0]}"
-          
+          SUMMARY_ERRORS_FILE="summary-tests-errors-${{ matrix.node-version }}.log"
+
           grep -E "Test Suites:|Tests:|Snapshots:|Time:" "full-tests-results-${{ matrix.node-version }}.log" > \
             summary-tests-results-${{ matrix.node-version }}.log || \
             echo "❌ Test summary not found." > summary-tests-results-${{ matrix.node-version }}.log
 
           > "$SUMMARY_ERRORS_FILE"
           if [ "$exit_code" -ne 0 ]; then
-            awk '/Summary of all failing tests/,/Test Suites/{if ($0 !~ /Test Suites/ && $0 !~ /^$/ && NR > 1) print}' \
-              "full-tests-results-${{ matrix.node-version }}.log" >> "$SUMMARY_ERRORS_FILE"
-          
+            grep -iE "(fail|error|unhandled|exception)" "full-tests-results-${{ matrix.node-version }}.log" >> "$SUMMARY_ERRORS_FILE" || true
+
             if [ ! -s "$SUMMARY_ERRORS_FILE" ]; then
-              echo "Tests failed. Check full-tests-results-${{ matrix.node-version }}.log for details." >> "$SUMMARY_ERRORS_FILE"
+              echo "Tests failed but no detailed error messages found in logs." >> "$SUMMARY_ERRORS_FILE"
             fi
+          
             echo ""
             echo "❌ Tests are failed. Please check $SUMMARY_ERRORS_FILE."
             echo ""
@@ -124,9 +116,7 @@ jobs:
             echo "✅ All tests are passed successfully."
             echo ""
           fi
-          echo "--- Files in current directory (run-tests) ---"
-          ls -l
-          
+         
           exit "$exit_code"
 
       - name: Upload Test Logs
@@ -155,7 +145,23 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t my-app-image:${{ github.sha }} .
+          LOG_FILE=docker-build-${{ github.sha }}.log
+          
+          {
+          docker build -t my-app-image:${{ github.sha }} . 
+          docker image inspect my-app-image:${{ github.sha }} > /dev/null
+          echo "✅ Docker image built successfully."
+          } >"$LOG_FILE" 2>&1 || {
+            echo "❌ Docker build failed. See log." >> "$LOG_FILE"
+            exit 1
+          }
+
+      - name: Upload Docker Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-results
+          path: docker-build-${{ github.sha }}.log
     
 
   generate-report:
@@ -164,17 +170,6 @@ jobs:
     needs: ['run-lint', 'run-tests', 'docker-build']
     if: always()
     steps:
-
-      - name: Install/Update GitHub CLI to latest version
-        run: |
-          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-          && sudo apt update \
-          && sudo apt install gh -y
-          echo "Installed gh version:"
-          gh --version
 
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -187,25 +182,13 @@ jobs:
           DOCKER_BUILD_JOB_RESULT_ENV: ${{ needs.docker-build.result }}
         run: |
           OVERALL_ICON_VAR="✅"
-          echo "Lint Job Result from ENV: '$LINT_JOB_RESULT_ENV'"
-          echo "Test Job Result from ENV: '$TEST_JOB_RESULT_ENV'"
-          echo "Docker Build Job Result from ENV: '$DOCKER_BUILD_JOB_RESULT_ENV'"
-          
-          echo "Before IF: OVERALL_ICON_VAR is $OVERALL_ICON_VAR"
-          echo "Condition LINT: [[ \"$LINT_JOB_RESULT_ENV\" != \"success\" ]]"
-          echo "Condition TEST: [[ \"$TEST_JOB_RESULT_ENV\" != \"success\" ]]"
-          echo "Condition DOCKER: [[ \"$DOCKER_BUILD_JOB_RESULT_ENV\" != \"success\" ]]"
           
           if [[ "$LINT_JOB_RESULT_ENV" != "success" || \
                 "$TEST_JOB_RESULT_ENV" != "success" || \
                 "$DOCKER_BUILD_JOB_RESULT_ENV" != "success" ]]; then
-            echo "Condition MET: At least one job did not succeed."
             OVERALL_ICON_VAR="❌"
-          else
-            echo "Condition NOT MET: All jobs succeeded (or were not 'failure'/'skipped' in a way that triggers the condition)."
           fi
           
-          echo "After IF: OVERALL_ICON_VAR is $OVERALL_ICON_VAR"
           echo "OVERALL_ICON=$OVERALL_ICON_VAR" >> $GITHUB_OUTPUT
 
       - name: Download All Artifacts
@@ -213,16 +196,10 @@ jobs:
         with:
           path: all-artifacts
 
-      - name: List downloaded files
-        run: |
-          echo "--- Files in all-artifacts ---"
-          ls -R all-artifacts
-
       - name: Generate Test Report
         run: |
           CI_MARKER_BASE="# CI Report"
           OVERALL_ICON_FROM_STEP="${{ steps.overall_status.outputs.OVERALL_ICON }}"
-          echo "Received OVERALL_ICON_FROM_STEP: '$OVERALL_ICON_FROM_STEP'"
           CI_MARKER="# $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
           
           {
@@ -232,36 +209,21 @@ jobs:
 
           LINT_SUMMARY_PATH_FOR_CHECK="${{ github.workspace }}/all-artifacts/lint-results/summary-lint-errors.log"
 
-          echo "--- Pre-check for Lint Summary (outside redirect block) ---"
-          if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then
-            echo "File $LINT_SUMMARY_PATH_FOR_CHECK EXISTS (pre-check)."
-          else
-            echo "File $LINT_SUMMARY_PATH_FOR_CHECK DOES NOT EXIST (pre-check)."
-            echo "Current directory (pwd): $(pwd)"
-            echo "Listing all-artifacts (pwd):"
-            ls -R all-artifacts || echo "all-artifacts directory not found here"
-          fi
-          echo "--- End of Pre-check ---"
-
           { 
             echo "## 📝 Lint Report"
             echo ""
 
-            echo "Checking for Lint Summary (inside redirect block) at: $LINT_SUMMARY_PATH_FOR_CHECK" # Для діагностики
-
             if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then 
-              echo "Lint Summary File FOUND (inside redirect block)." # Для діагностики
               if grep -q -E '\[warn\]|Error:|Warning:' "$LINT_SUMMARY_PATH_FOR_CHECK"; then
                 echo '```'
                 cat "$LINT_SUMMARY_PATH_FOR_CHECK"
                 echo '```'
               else
                 echo '```'
-                echo "✅ No lint issues found." # Або cat "$LINT_SUMMARY_PATH_FOR_CHECK"
+                echo "✅ No lint issues found."
                 echo '```'
               fi
             else
-              echo "Lint Summary File NOT FOUND (inside redirect block)."
               echo "⚠️ Lint report file not found at $LINT_SUMMARY_PATH_FOR_CHECK."
             fi
             printf "\n"
@@ -282,10 +244,10 @@ jobs:
               echo "**🔹 Node.js Version:** $NODE_VERSION_FROM_FOLDER_NAME"
               echo ""
 
-              if [[ -f "SUMMARY_RESULTS_FILE_PATH" ]]; then
+              if [[ -f "$SUMMARY_RESULTS_FILE_PATH" ]]; then
                 echo "**Test Summary:**"
                 echo '```'
-                cat "SUMMARY_RESULTS_FILE_PATH"
+                cat "$SUMMARY_RESULTS_FILE_PATH"
                 echo '```'
               else
                 echo "⚠️ No test summary available for Node $NODE_VERSION_FROM_FOLDER_NAME."
@@ -307,13 +269,35 @@ jobs:
               else 
                 echo "⚠️ No specific test error log file found for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
-              echo ""
+              printf "\n"
             done
 
             if [[ "$TEST_REPORTS_FOUND" == false ]]; then
               echo "⚠️ No test results available."
             fi
+            printf "\n"
+          } >> report.txt
+          
+          {
+            echo "## 🐳 Docker Health Check"
             echo ""
+
+            DOCKER_LOG="all-artifacts/docker-results/docker-build-${{ github.sha }}.log"
+  
+            if [[ -f "$DOCKER_LOG" ]]; then
+              if grep -q "❌ Docker build failed" "$DOCKER_LOG"; then
+                echo "**Health Check Results (with errors):**"
+                echo '```log'
+                cat "$DOCKER_LOG"
+                echo '```'
+              else
+                echo "**✅ Docker image built successfully.**"
+              fi
+            else
+              echo "⚠️ No Docker health check results available."
+            fi
+          
+            printf "\n"
           } >> report.txt
 
       - name: Publish Report in GitHub Actions Summary
@@ -329,32 +313,20 @@ jobs:
             exit 0
           fi
           
-          # Встановлюємо автора та маркер. 
-          # ЗАМІНИ "github-actions[bot]" НА СВІЙ ЛОГІН, ЯКЩО КОМЕНТАРІ ПИШУТЬСЯ ВІД ТЕБЕ!
           TARGET_COMMENT_AUTHOR="github-actions[bot]" 
-          TARGET_COMMENT_MARKER="# CI Report"      # Твій базовий маркер (без іконки)
-          
-          echo "Searching for existing PR comment with marker: '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'"
-          
-          # ТИМЧАСОВИЙ СПОСІБ БЕЗ --arg:
-          # Формуємо jq запит, вставляючи змінні безпосередньо.
-          # Це працюватиме, якщо TARGET_COMMENT_AUTHOR і TARGET_COMMENT_MARKER не містять подвійних лапок.
+          TARGET_COMMENT_MARKER="# CI Report"
+                    
           JQ_QUERY_STRING=".[] | select(.user.login==\"$TARGET_COMMENT_AUTHOR\" and (.body | contains(\"$TARGET_COMMENT_MARKER\"))) | .id"
-          
-          echo "Using JQ Query: $JQ_QUERY_STRING" # Для діагностики
-          
-          # Використовуємо JQ_QUERY_STRING замість передачі через --arg
+                    
           COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
-            --jq "$JQ_QUERY_STRING" | head -n 1) # head -n 1 ВАЖЛИВО!
+            --jq "$JQ_QUERY_STRING" | head -n 1)
           
           REPORT_CONTENT_FILE="report.txt" 
           
           if [[ -n "$COMMENT_ID" ]]; then
-            echo "Updating existing CI report comment ID: $COMMENT_ID"
             gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
               -X PATCH \
               --field body="$(cat $REPORT_CONTENT_FILE)" 
           else
-            echo "No previous CI report found with marker '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'. Creating a new one..."
             gh pr comment "$PR_NUMBER" --body-file "$REPORT_CONTENT_FILE"
           fi
