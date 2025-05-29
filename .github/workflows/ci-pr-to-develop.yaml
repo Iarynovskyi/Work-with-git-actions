@@ -333,19 +333,27 @@ jobs:
             echo "No PR associated, skipping update."
             exit 0
           fi
-
+          
+          # Встановлюємо автора та маркер. 
+          # ЗАМІНИ "github-actions[bot]" НА СВІЙ ЛОГІН, ЯКЩО КОМЕНТАРІ ПИШУТЬСЯ ВІД ТЕБЕ!
           TARGET_COMMENT_AUTHOR="github-actions[bot]" 
-          TARGET_COMMENT_MARKER="# CI Report"   
-
+          TARGET_COMMENT_MARKER="# CI Report"      # Твій базовий маркер (без іконки)
+          
           echo "Searching for existing PR comment with marker: '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'"
-
+          
+          # ТИМЧАСОВИЙ СПОСІБ БЕЗ --arg:
+          # Формуємо jq запит, вставляючи змінні безпосередньо.
+          # Це працюватиме, якщо TARGET_COMMENT_AUTHOR і TARGET_COMMENT_MARKER не містять подвійних лапок.
+          JQ_QUERY_STRING=".[] | select(.user.login==\"$TARGET_COMMENT_AUTHOR\" and (.body | contains(\"$TARGET_COMMENT_MARKER\"))) | .id"
+          
+          echo "Using JQ Query: $JQ_QUERY_STRING" # Для діагностики
+          
+          # Використовуємо JQ_QUERY_STRING замість передачі через --arg
           COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.user.login==$author and (.body | contains($marker))) | .id' \
-            --arg author "$TARGET_COMMENT_AUTHOR" \
-            --arg marker "$TARGET_COMMENT_MARKER" | head -n 1) # head -n 1 ВАЖЛИВО!
+            --jq "$JQ_QUERY_STRING" | head -n 1) # head -n 1 ВАЖЛИВО!
           
           REPORT_CONTENT_FILE="report.txt" 
-
+          
           if [[ -n "$COMMENT_ID" ]]; then
             echo "Updating existing CI report comment ID: $COMMENT_ID"
             gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
@@ -355,4 +363,3 @@ jobs:
             echo "No previous CI report found with marker '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'. Creating a new one..."
             gh pr comment "$PR_NUMBER" --body-file "$REPORT_CONTENT_FILE"
           fi
-
