@@ -211,7 +211,7 @@ jobs:
         run: |
           CI_MARKER_BASE="# CI Report"
           OVERALL_ICON_FROM_STEP="${{ steps.overall_status.outputs.OVERALL_ICON }}"
-          CI_MARKER=" $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
+          CI_MARKER="$OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
           
           {
             echo "$CI_MARKER"
