@@ -20,10 +20,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup Snyk CLI
-        uses: snyk/actions/setup@v1
+      - name: Install Snyk CLI globally
+        run: npm install -g snyk
 
-      - name: Run Snyk Test
-        uses: snyk/actions/test@v1
+      - name: Run Snyk test
         env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          SNYK_TOKEN: ${{ secrets.SNYK }}
+        run: snyk test
