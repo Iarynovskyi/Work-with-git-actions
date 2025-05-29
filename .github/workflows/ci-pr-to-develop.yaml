@@ -257,10 +257,10 @@ jobs:
               echo "**🔹 Node.js Version:** $NODE_VERSION_FROM_FOLDER_NAME"
               echo ""
 
-              if [[ -f "SUMMARY_RESULTS_FILE_PATH" ]]; then
+              if [[ -f "$SUMMARY_RESULTS_FILE_PATH" ]]; then
                 echo "**Test Summary:**"
                 echo '```'
-                cat "SUMMARY_RESULTS_FILE_PATH"
+                cat "$SUMMARY_RESULTS_FILE_PATH"
                 echo '```'
               else
                 echo "⚠️ No test summary available for Node $NODE_VERSION_FROM_FOLDER_NAME."
