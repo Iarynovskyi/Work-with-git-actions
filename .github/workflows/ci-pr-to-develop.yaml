@@ -41,7 +41,7 @@ jobs:
           
           grep -E '\[warn\]|Error:|Warning:' full-lint.log
           if [ "$?" -eq 0 ]; then
-            echo "$grep_output" > "$SUMMARY_LINT_FILE"
+            echo "ESLint errors" > "$SUMMARY_LINT_FILE"
           else
             echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
           fi
