@@ -145,9 +145,21 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t my-app-image:${{ github.sha }} .
+          LOG_FILE=docker-build-${{ github.sha }}.log
+          docker build -t my-app-image:${{ github.sha }} . 
           docker image inspect my-app-image:${{ github.sha }} > /dev/null
           echo "✅ Docker image built successfully."
+          } >"$LOG_FILE" 2>&1 || {
+            echo "❌ Docker build failed. See log." >> "$LOG_FILE"
+            exit 1
+          }
+
+      - name: Upload Docker Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-results
+          path: docker-build-${{ github.sha }}.log
     
 
   generate-report:
@@ -179,25 +191,13 @@ jobs:
           DOCKER_BUILD_JOB_RESULT_ENV: ${{ needs.docker-build.result }}
         run: |
           OVERALL_ICON_VAR="✅"
-          echo "Lint Job Result from ENV: '$LINT_JOB_RESULT_ENV'"
-          echo "Test Job Result from ENV: '$TEST_JOB_RESULT_ENV'"
-          echo "Docker Build Job Result from ENV: '$DOCKER_BUILD_JOB_RESULT_ENV'"
-          
-          echo "Before IF: OVERALL_ICON_VAR is $OVERALL_ICON_VAR"
-          echo "Condition LINT: [[ \"$LINT_JOB_RESULT_ENV\" != \"success\" ]]"
-          echo "Condition TEST: [[ \"$TEST_JOB_RESULT_ENV\" != \"success\" ]]"
-          echo "Condition DOCKER: [[ \"$DOCKER_BUILD_JOB_RESULT_ENV\" != \"success\" ]]"
           
           if [[ "$LINT_JOB_RESULT_ENV" != "success" || \
                 "$TEST_JOB_RESULT_ENV" != "success" || \
                 "$DOCKER_BUILD_JOB_RESULT_ENV" != "success" ]]; then
-            echo "Condition MET: At least one job did not succeed."
             OVERALL_ICON_VAR="❌"
-          else
-            echo "Condition NOT MET: All jobs succeeded (or were not 'failure'/'skipped' in a way that triggers the condition)."
           fi
           
-          echo "After IF: OVERALL_ICON_VAR is $OVERALL_ICON_VAR"
           echo "OVERALL_ICON=$OVERALL_ICON_VAR" >> $GITHUB_OUTPUT
 
       - name: Download All Artifacts
@@ -205,17 +205,11 @@ jobs:
         with:
           path: all-artifacts
 
-      - name: List downloaded files
-        run: |
-          echo "--- Files in all-artifacts ---"
-          ls -R all-artifacts
-
       - name: Generate Test Report
         run: |
-          CI_MARKER_BASE="# CI Report"
+          CI_MARKER_BASE=" CI Report"
           OVERALL_ICON_FROM_STEP="${{ steps.overall_status.outputs.OVERALL_ICON }}"
-          echo "Received OVERALL_ICON_FROM_STEP: '$OVERALL_ICON_FROM_STEP'"
-          CI_MARKER="# $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
+          CI_MARKER=" $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
           
           {
             echo "$CI_MARKER"
@@ -224,36 +218,23 @@ jobs:
 
           LINT_SUMMARY_PATH_FOR_CHECK="${{ github.workspace }}/all-artifacts/lint-results/summary-lint-errors.log"
 
-          echo "--- Pre-check for Lint Summary (outside redirect block) ---"
-          if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then
-            echo "File $LINT_SUMMARY_PATH_FOR_CHECK EXISTS (pre-check)."
-          else
-            echo "File $LINT_SUMMARY_PATH_FOR_CHECK DOES NOT EXIST (pre-check)."
-            echo "Current directory (pwd): $(pwd)"
-            echo "Listing all-artifacts (pwd):"
-            ls -R all-artifacts || echo "all-artifacts directory not found here"
-          fi
-          echo "--- End of Pre-check ---"
-
           { 
             echo "## 📝 Lint Report"
             echo ""
 
-            echo "Checking for Lint Summary (inside redirect block) at: $LINT_SUMMARY_PATH_FOR_CHECK" # Для діагностики
+            echo "Checking for Lint Summary (inside redirect block) at: $LINT_SUMMARY_PATH_FOR_CHECK"
 
             if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then 
-              echo "Lint Summary File FOUND (inside redirect block)." # Для діагностики
               if grep -q -E '\[warn\]|Error:|Warning:' "$LINT_SUMMARY_PATH_FOR_CHECK"; then
                 echo '```'
                 cat "$LINT_SUMMARY_PATH_FOR_CHECK"
                 echo '```'
               else
                 echo '```'
-                echo "✅ No lint issues found." # Або cat "$LINT_SUMMARY_PATH_FOR_CHECK"
+                echo "✅ No lint issues found."
                 echo '```'
               fi
             else
-              echo "Lint Summary File NOT FOUND (inside redirect block)."
               echo "⚠️ Lint report file not found at $LINT_SUMMARY_PATH_FOR_CHECK."
             fi
             printf "\n"
@@ -299,13 +280,31 @@ jobs:
               else 
                 echo "⚠️ No specific test error log file found for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
-              echo ""
+              printf "\n"
             done
 
             if [[ "$TEST_REPORTS_FOUND" == false ]]; then
               echo "⚠️ No test results available."
             fi
+            printf "\n"
+          } >> report.txt
+          
+          {
+            echo "## 🐳 Docker Health Check"
             echo ""
+
+            DOCKER_LOG="all-artifacts/docker-results/docker-build-${{ github.sha }}.log"
+            if [[ -f "$DOCKER_LOG" ]]; then
+              echo "**Health Check Results:**"
+              echo '```'
+              echo '```log'
+              cat "$DOCKER_LOG"
+              echo '```'
+            else
+              echo "⚠️ No Docker health check results available."
+            fi
+
+            printf "\n"
           } >> report.txt
 
       - name: Publish Report in GitHub Actions Summary
@@ -321,32 +320,20 @@ jobs:
             exit 0
           fi
           
-          # Встановлюємо автора та маркер. 
-          # ЗАМІНИ "github-actions[bot]" НА СВІЙ ЛОГІН, ЯКЩО КОМЕНТАРІ ПИШУТЬСЯ ВІД ТЕБЕ!
           TARGET_COMMENT_AUTHOR="github-actions[bot]" 
-          TARGET_COMMENT_MARKER="# CI Report"      # Твій базовий маркер (без іконки)
-          
-          echo "Searching for existing PR comment with marker: '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'"
-          
-          # ТИМЧАСОВИЙ СПОСІБ БЕЗ --arg:
-          # Формуємо jq запит, вставляючи змінні безпосередньо.
-          # Це працюватиме, якщо TARGET_COMMENT_AUTHOR і TARGET_COMMENT_MARKER не містять подвійних лапок.
+          TARGET_COMMENT_MARKER=" CI Report"
+                    
           JQ_QUERY_STRING=".[] | select(.user.login==\"$TARGET_COMMENT_AUTHOR\" and (.body | contains(\"$TARGET_COMMENT_MARKER\"))) | .id"
-          
-          echo "Using JQ Query: $JQ_QUERY_STRING" # Для діагностики
-          
-          # Використовуємо JQ_QUERY_STRING замість передачі через --arg
+                    
           COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
-            --jq "$JQ_QUERY_STRING" | head -n 1) # head -n 1 ВАЖЛИВО!
+            --jq "$JQ_QUERY_STRING" | head -n 1)
           
           REPORT_CONTENT_FILE="report.txt" 
           
           if [[ -n "$COMMENT_ID" ]]; then
-            echo "Updating existing CI report comment ID: $COMMENT_ID"
             gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
               -X PATCH \
               --field body="$(cat $REPORT_CONTENT_FILE)" 
           else
-            echo "No previous CI report found with marker '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'. Creating a new one..."
             gh pr comment "$PR_NUMBER" --body-file "$REPORT_CONTENT_FILE"
           fi
