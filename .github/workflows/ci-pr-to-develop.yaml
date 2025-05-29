@@ -101,12 +101,12 @@ jobs:
 
           > "$SUMMARY_ERRORS_FILE"
           if [ "$exit_code" -ne 0 ]; then
-            awk '/Summary of all failing tests/,/Test Suites/{if ($0 !~ /Test Suites/ && $0 !~ /^$/ && NR > 1) print}' \
-              "full-tests-results-${{ matrix.node-version }}.log" >> "$SUMMARY_ERRORS_FILE"
-          
+            grep -iE "(fail|error|unhandled|exception)" "full-tests-results-${{ matrix.node-version }}.log" >> "$SUMMARY_ERRORS_FILE" || true
+
             if [ ! -s "$SUMMARY_ERRORS_FILE" ]; then
-              echo "Tests failed. Check full-tests-results-${{ matrix.node-version }}.log for details." >> "$SUMMARY_ERRORS_FILE"
+              echo "Tests failed but no detailed error messages found in logs." >> "$SUMMARY_ERRORS_FILE"
             fi
+          
             echo ""
             echo "❌ Tests are failed. Please check $SUMMARY_ERRORS_FILE."
             echo ""
