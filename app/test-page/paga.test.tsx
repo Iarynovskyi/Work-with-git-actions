@@ -4,6 +4,6 @@ import Test from './page';
 
 it('renders the Test component correctly', async () => {
   render(<Test />);
-  const aboutElement = await screen.findByText(/Hello, Next.js!!/i)
+  const aboutElement = await screen.findByText(/Hello, Next.js!/i);
   expect(aboutElement).toBeInTheDocument();
 });
