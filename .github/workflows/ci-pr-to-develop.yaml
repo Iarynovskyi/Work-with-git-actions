@@ -34,54 +34,27 @@ jobs:
 
       - name: Run ESLint
         run: |
-          echo "Running simplified ESLint test..."
-          # Імітуємо успішний лінт
-          lint_exit_code=0 
-          echo "Simulated lint_exit_code: $lint_exit_code"
+          echo "Starting minimal file creation test..."
           
           SUMMARY_LINT_FILE="summary-lint-errors.log"
-          FULL_LINT_FILE="full-lint.log" # Потрібен для grep
+          FULL_LINT_FILE="full-lint.log"
           
-          # Створимо порожній full-lint.log, щоб grep нічого не знайшов
-          > "$FULL_LINT_FILE" 
-          echo "Created empty $FULL_LINT_FILE"
-          
-          # Логіка створення summary файлу
-          grep_output=$(grep -E '\[warn\]|Error:|Warning:' "$FULL_LINT_FILE")
-          grep_exit_code=$? 
-          echo "grep_exit_code: $grep_exit_code"
-          
-          if [ "$grep_exit_code" -eq 0 ]; then
-          echo "$grep_output" > "$SUMMARY_LINT_FILE"
-          final_job_exit_code=1
-          echo "Branch: grep found issues."
-          else
-          echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
-          if [ "$lint_exit_code" -ne 0 ]; then
-           final_job_exit_code=0 # Or 1, depending on desired behavior
-           echo "Branch: grep found nothing, lint_exit_code was non-zero (value: $lint_exit_code)."
-          else
-           final_job_exit_code=0
-           echo "Branch: grep found nothing, lint_exit_code was zero."
-          fi
-          fi
+          echo "This is full-lint.log content" > "$FULL_LINT_FILE"
+          echo "✅ All good in summary" > "$SUMMARY_LINT_FILE"
           
           echo "--- Content of $SUMMARY_LINT_FILE ---"
           cat "$SUMMARY_LINT_FILE"
           echo "--- End of content ---"
           
-          echo "--- Checking $SUMMARY_LINT_FILE before ls ---"
-          if [ -f "$SUMMARY_LINT_FILE" ]; then
-          echo "$SUMMARY_LINT_FILE exists."
-          else
-          echo "$SUMMARY_LINT_FILE DOES NOT exist."
-          fi
+          echo "--- Content of $FULL_LINT_FILE ---"
+          cat "$FULL_LINT_FILE"
+          echo "--- End of content ---"
           
           echo "--- Files in current directory ---"
           ls -l
           
-          echo "Final job exit code will be: $final_job_exit_code"
-          exit "$final_job_exit_code"
+          echo "Exiting with 0"
+          exit 0
 
       - name: Upload lint logs
         uses: actions/upload-artifact@v4
