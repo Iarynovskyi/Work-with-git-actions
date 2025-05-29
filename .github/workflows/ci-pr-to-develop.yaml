@@ -34,27 +34,59 @@ jobs:
 
       - name: Run ESLint
         run: |
-          echo "Starting minimal file creation test..."
+          echo "Running ESLint command..."
+          npm run lint 2>&1 | tee full-lint.log
+          lint_actual_exit_code="${PIPESTATUS[0]}" # Код виходу npm run lint
+          echo "Actual lint command exit code: $lint_actual_exit_code"
           
           SUMMARY_LINT_FILE="summary-lint-errors.log"
-          FULL_LINT_FILE="full-lint.log"
+          final_job_exit_code=0 # За замовчуванням вважаємо, що job успішний
           
-          echo "This is full-lint.log content" > "$FULL_LINT_FILE"
-          echo "✅ All good in summary" > "$SUMMARY_LINT_FILE"
+          # Шукаємо реальні помилки/попередження у виводі
+          grep_output=$(grep -E '\[warn\]|Error:|Warning:' full-lint.log)
+          grep_found_issues_exit_code=$? # 0 якщо знайдено, 1 якщо ні
           
-          echo "--- Content of $SUMMARY_LINT_FILE ---"
+          if [ "$grep_found_issues_exit_code" -eq 0 ]; then
+            # Grep знайшов проблеми, записуємо їх
+            echo "$grep_output" > "$SUMMARY_LINT_FILE"
+            echo "❌ ESLint found issues in log (via grep)."
+            final_job_exit_code=1 # Job має впасти, бо є реальні проблеми
+          else
+            # Grep не знайшов конкретних проблем
+            if [ "$lint_actual_exit_code" -ne 0 ]; then
+              # Команда lint впала, але grep нічого не знайшов - можливо, інша помилка
+              echo "⚠️ Lint command exited with $lint_actual_exit_code, but no specific lint issues were grepped." > "$SUMMARY_LINT_FILE"
+              # Ти можеш вирішити, чи має job падати в цьому випадку. 
+              # Якщо "Error: Process completed with exit code 1" при "No ESLint warnings or errors" 
+              # для тебе є помилкою, встанови final_job_exit_code=1.
+              # Якщо ти хочеш ігнорувати такий випадок, залиш final_job_exit_code=0.
+              # ЗАРАЗ ВСТАНОВИМО 1, щоб job падав, якщо сама команда lint впала.
+              final_job_exit_code=1
+              echo "❌ Lint command failed, even if no specific issues were grepped."
+            else
+              # Команда lint успішна, і grep нічого не знайшов - все добре
+              echo "✅ No lint issues found." > "$SUMMARY_LINT_FILE"
+              echo "✅ No lint errors or warnings."
+              final_job_exit_code=0
+            fi
+          fi
+          
+          echo "--- Content of $SUMMARY_LINT_FILE (in run-lint) ---"
           cat "$SUMMARY_LINT_FILE"
           echo "--- End of content ---"
           
-          echo "--- Content of $FULL_LINT_FILE ---"
-          cat "$FULL_LINT_FILE"
-          echo "--- End of content ---"
+          echo "--- Checking $SUMMARY_LINT_FILE before ls ---"
+          if [ -f "$SUMMARY_LINT_FILE" ]; then
+            echo "$SUMMARY_LINT_FILE exists."
+          else
+            echo "$SUMMARY_LINT_FILE DOES NOT exist."
+          fi
           
-          echo "--- Files in current directory ---"
-          ls -l
+          echo "--- Files in current directory (run-lint) ---"
+          ls -l 
           
-          echo "Exiting with 0"
-          exit 0
+          echo "Job will exit with: $final_job_exit_code"
+          exit "$final_job_exit_code"
 
       - name: Upload lint logs
         uses: actions/upload-artifact@v4
@@ -153,23 +185,31 @@ jobs:
   generate-report:
     name: Generate Test Report
     runs-on: ubuntu-latest
-    needs: ['run-lint', 'run-tests', 'docker-build']
-    if: always()
+    needs: [ 'run-lint', 'run-tests', 'docker-build' ] # Переконайся, що всі залежні jobs тут
+    if: always() # Запускається завжди, щоб згенерувати звіт
     steps:
-
-      - name: Install/Update GitHub CLI to latest version
+      - name: Install/Update GitHub CLI to latest version # <--- КРОК ОНОВЛЕННЯ GH CLI
+        id: setup_gh # Потрібен ID для отримання output
         run: |
+          echo "Attempting to install/update gh CLI..."
           type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
           && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
           && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
           && sudo apt update \
-          && sudo apt install gh -y
-          echo "Installed gh version:"
-          gh --version
+          && sudo apt install -y gh
+          INSTALLED_GH_VERSION=$(gh --version)
+          echo "Installed gh version: $INSTALLED_GH_VERSION"
+          if gh api --help | grep -q -e "--arg"; then
+            echo "Current gh CLI supports --arg."
+          else
+            echo "ERROR: Current gh CLI DOES NOT support --arg. Version: $INSTALLED_GH_VERSION"
+            # Можна додати 'exit 1' тут, якщо --arg критичний і не встановлюється
+          fi
+          echo "GH_CLI_PATH=$(which gh)" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Determine overall status
         id: overall_status
@@ -178,7 +218,7 @@ jobs:
           TEST_JOB_RESULT_ENV: ${{ needs.run-tests.result }}
           DOCKER_BUILD_JOB_RESULT_ENV: ${{ needs.docker-build.result }}
         run: |
-          OVERALL_ICON_VAR="✅"
+          OVERALL_ICON_VAR="✅" 
           echo "Lint Job Result from ENV: '$LINT_JOB_RESULT_ENV'"
           echo "Test Job Result from ENV: '$TEST_JOB_RESULT_ENV'"
           echo "Docker Build Job Result from ENV: '$DOCKER_BUILD_JOB_RESULT_ENV'"
@@ -194,7 +234,7 @@ jobs:
             echo "Condition MET: At least one job did not succeed."
             OVERALL_ICON_VAR="❌"
           else
-            echo "Condition NOT MET: All jobs succeeded (or were not 'failure'/'skipped' in a way that triggers the condition)."
+            echo "Condition NOT MET: All jobs (that ran) succeeded."
           fi
           
           echo "After IF: OVERALL_ICON_VAR is $OVERALL_ICON_VAR"
@@ -212,101 +252,104 @@ jobs:
 
       - name: Generate Test Report
         run: |
-          CI_MARKER_BASE="# CI Report"
+          CI_MARKER_BASE="# CI Report" 
           OVERALL_ICON_FROM_STEP="${{ steps.overall_status.outputs.OVERALL_ICON }}"
-          echo "Received OVERALL_ICON_FROM_STEP: '$OVERALL_ICON_FROM_STEP'"
-          CI_MARKER="# $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
+          echo "Received OVERALL_ICON_FROM_STEP for report title: '$OVERALL_ICON_FROM_STEP'"
+          CI_MARKER="$OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
           
           {
             echo "$CI_MARKER"
             echo ""
           } > report.txt
-
-          LINT_SUMMARY_PATH_FOR_CHECK="${{ github.workspace }}/all-artifacts/lint-results/summary-lint-errors.log"
-
-          echo "--- Pre-check for Lint Summary (outside redirect block) ---"
-          if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then
-            echo "File $LINT_SUMMARY_PATH_FOR_CHECK EXISTS (pre-check)."
-          else
-            echo "File $LINT_SUMMARY_PATH_FOR_CHECK DOES NOT EXIST (pre-check)."
-            echo "Current directory (pwd): $(pwd)"
-            echo "Listing all-artifacts (pwd):"
-            ls -R all-artifacts || echo "all-artifacts directory not found here"
-          fi
-          echo "--- End of Pre-check ---"
-
-          { 
+          
+          # 📝 Lint Report
+          {
             echo "## 📝 Lint Report"
             echo ""
-
-            echo "Checking for Lint Summary (inside redirect block) at: $LINT_SUMMARY_PATH_FOR_CHECK" # Для діагностики
-
-            if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then 
-              echo "Lint Summary File FOUND (inside redirect block)." # Для діагностики
+          
+            LINT_SUMMARY_PATH_FOR_CHECK="all-artifacts/lint-results/summary-lint-errors.log"
+            echo "Checking for Lint Summary (inside report generation) at: $LINT_SUMMARY_PATH_FOR_CHECK"
+          
+            if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then
+              echo "Lint Summary File FOUND (inside report generation)."
+              # Шукаємо патерни помилок/попереджень у файлі
               if grep -q -E '\[warn\]|Error:|Warning:' "$LINT_SUMMARY_PATH_FOR_CHECK"; then
+                echo "**❌ Lint Errors Found:**"
                 echo '```'
                 cat "$LINT_SUMMARY_PATH_FOR_CHECK"
                 echo '```'
               else
+                # Якщо патерни помилок/попереджень НЕ знайдено,
+                # значить, там має бути повідомлення про успіх 
+                # (згенероване в run-lint, якщо grep нічого не знайшов)
                 echo '```'
-                echo "✅ No lint issues found." # Або cat "$LINT_SUMMARY_PATH_FOR_CHECK"
+                cat "$LINT_SUMMARY_PATH_FOR_CHECK" # Показуємо вміст (має бути "✅ No lint issues found.")
                 echo '```'
               fi
             else
-              echo "Lint Summary File NOT FOUND (inside redirect block)."
+              echo "Lint Summary File NOT FOUND (inside report generation)."
               echo "⚠️ Lint report file not found at $LINT_SUMMARY_PATH_FOR_CHECK."
             fi
             printf "\n"
           } >> report.txt
-
+          
+          # 🧪 Test Results
           TEST_REPORTS_FOUND=false
           {
             echo "## 🧪 Test Results"
             echo ""
-
+          
             for folder in $(find all-artifacts -maxdepth 1 -type d -name "tests-results-*"); do
               TEST_REPORTS_FOUND=true
               NODE_VERSION_FROM_FOLDER_NAME=$(basename "$folder" | sed 's/tests-results-//')
-
+          
               SUMMARY_RESULTS_FILE_PATH="$folder/summary-tests-results-${NODE_VERSION_FROM_FOLDER_NAME}.log"
-              ERRORS_FILE_PATH="$folder/summary-tests-errors-${NODE_VERSION_FROM_FOLDER_NAME}.log" 
+              ERRORS_FILE_PATH="$folder/summary-tests-errors-${NODE_VERSION_FROM_FOLDER_NAME}.log"
           
               echo "**🔹 Node.js Version:** $NODE_VERSION_FROM_FOLDER_NAME"
               echo ""
-
-              if [[ -f "SUMMARY_RESULTS_FILE_PATH" ]]; then
+          
+              if [[ -f "$SUMMARY_RESULTS_FILE_PATH" ]]; then
                 echo "**Test Summary:**"
                 echo '```'
-                cat "SUMMARY_RESULTS_FILE_PATH"
+                cat "$SUMMARY_RESULTS_FILE_PATH"
                 echo '```'
               else
                 echo "⚠️ No test summary available for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
-
+          
+              # Перевіряємо, чи файл ERRORS_FILE_PATH існує
               if [[ -f "$ERRORS_FILE_PATH" ]]; then
+                # Якщо він НЕ ПОРОЖНІЙ І НЕ містить "All tests passed successfully"
                 if [[ -s "$ERRORS_FILE_PATH" ]] && ! grep -q "✅ All tests passed successfully." "$ERRORS_FILE_PATH"; then
                   echo "**❌ Test Errors:**"
                   echo '```'
                   cat "$ERRORS_FILE_PATH"
                   echo '```'
+                # Якщо він містить "All tests passed successfully"
                 elif grep -q "✅ All tests passed successfully." "$ERRORS_FILE_PATH"; then
                   echo '```'
-                  echo "✅ All tests passed successfully for Node $NODE_VERSION_FROM_FOLDER_NAME."
+                  cat "$ERRORS_FILE_PATH" # Показуємо "✅ All tests passed successfully."
                   echo '```'
+                # Якщо він порожній (і не містить "All tests passed")
                 elif [ ! -s "$ERRORS_FILE_PATH" ]; then
-                    echo "⚠️ Test error details inconclusive for Node $NODE_VERSION_FROM_FOLDER_NAME (empty error log)."
+                    echo "⚠️ Test error details inconclusive for Node $NODE_VERSION_FROM_FOLDER_NAME (empty error log but no success message)."
+                    echo "This might happen if tests failed but awk didn't extract specific errors, or if tests passed but success message wasn't written to error log."
                 fi
               else 
                 echo "⚠️ No specific test error log file found for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
               echo ""
             done
-
+          
             if [[ "$TEST_REPORTS_FOUND" == false ]]; then
               echo "⚠️ No test results available."
             fi
             echo ""
           } >> report.txt
+          
+          # Тут можна додати секцію для Docker Build, якщо потрібно,
+          # завантаживши відповідний артефакт зі статусом білду.
 
       - name: Publish Report in GitHub Actions Summary
         run: cat report.txt >> "$GITHUB_STEP_SUMMARY"
@@ -315,38 +358,35 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Отримуємо шлях до gh з кроку setup_gh
+          GH_COMMAND_PATH: ${{ steps.setup_gh.outputs.GH_CLI_PATH }}
         run: |
           if [[ -z "$PR_NUMBER" ]]; then
             echo "No PR associated, skipping update."
             exit 0
           fi
           
-          # Встановлюємо автора та маркер. 
-          # ЗАМІНИ "github-actions[bot]" НА СВІЙ ЛОГІН, ЯКЩО КОМЕНТАРІ ПИШУТЬСЯ ВІД ТЕБЕ!
+          # ЗАМІНИ "github-actions[bot]" НА АКТУАЛЬНОГО АВТОРА КОМЕНТАРІВ, ЯКЩО ЦЕ НЕ БОТ
           TARGET_COMMENT_AUTHOR="github-actions[bot]" 
-          TARGET_COMMENT_MARKER="# CI Report"      # Твій базовий маркер (без іконки)
+          TARGET_COMMENT_MARKER="# CI Report" # Базовий маркер
           
+          echo "Using gh command at: '$GH_COMMAND_PATH'"
           echo "Searching for existing PR comment with marker: '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'"
           
-          # ТИМЧАСОВИЙ СПОСІБ БЕЗ --arg:
-          # Формуємо jq запит, вставляючи змінні безпосередньо.
-          # Це працюватиме, якщо TARGET_COMMENT_AUTHOR і TARGET_COMMENT_MARKER не містять подвійних лапок.
-          JQ_QUERY_STRING=".[] | select(.user.login==\"$TARGET_COMMENT_AUTHOR\" and (.body | contains(\"$TARGET_COMMENT_MARKER\"))) | .id"
-          
-          echo "Using JQ Query: $JQ_QUERY_STRING" # Для діагностики
-          
-          # Використовуємо JQ_QUERY_STRING замість передачі через --arg
-          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
-            --jq "$JQ_QUERY_STRING" | head -n 1) # head -n 1 ВАЖЛИВО!
+          # Використовуємо $GH_COMMAND_PATH та --arg
+          COMMENT_ID=$($GH_COMMAND_PATH api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login==$author and (.body | contains($marker))) | .id' \
+            --arg author "$TARGET_COMMENT_AUTHOR" \
+            --arg marker "$TARGET_COMMENT_MARKER" | head -n 1)
           
           REPORT_CONTENT_FILE="report.txt" 
           
           if [[ -n "$COMMENT_ID" ]]; then
             echo "Updating existing CI report comment ID: $COMMENT_ID"
-            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
+            $GH_COMMAND_PATH api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
               -X PATCH \
               --field body="$(cat $REPORT_CONTENT_FILE)" 
           else
             echo "No previous CI report found with marker '$TARGET_COMMENT_MARKER' by author '$TARGET_COMMENT_AUTHOR'. Creating a new one..."
-            gh pr comment "$PR_NUMBER" --body-file "$REPORT_CONTENT_FILE"
+            $GH_COMMAND_PATH pr comment "$PR_NUMBER" --body-file "$REPORT_CONTENT_FILE"
           fi
