@@ -224,8 +224,6 @@ jobs:
             echo "## 📝 Lint Report"
             echo ""
 
-            echo "Checking for Lint Summary (inside redirect block) at: $LINT_SUMMARY_PATH_FOR_CHECK"
-
             if [[ -f "$LINT_SUMMARY_PATH_FOR_CHECK" ]]; then 
               if grep -q -E '\[warn\]|Error:|Warning:' "$LINT_SUMMARY_PATH_FOR_CHECK"; then
                 echo '```'
