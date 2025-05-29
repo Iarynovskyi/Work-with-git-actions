@@ -50,7 +50,7 @@ jobs:
             echo "✅ No lint errors."
             echo ""
           fi
-          
+          ls -l 
           exit "$exit_code"
 
       - name: Upload lint logs
@@ -96,19 +96,25 @@ jobs:
             summary-tests-results-${{ matrix.node-version }}.log || \
             echo "❌ Test summary not found." > summary-tests-results-${{ matrix.node-version }}.log
 
-          awk '/Summary of all failing tests/,/Test Suites/{if ($0 !~ /Test Suites/ && $0 !~ /^$/ && NR > 1) print}' \
-            "full-tests-results-${{ matrix.node-version }}.log" > \
-            "summary-tests-errors-${{ matrix.node-version }}.log"
+          > "$SUMMARY_ERRORS_FILE"
+          if [ "$exit_code" -ne 0 ]; then
+            awk '/Summary of all failing tests/,/Test Suites/{if ($0 !~ /Test Suites/ && $0 !~ /^$/ && NR > 1) print}' \
+              "full-tests-results-${{ matrix.node-version }}.log" >> "$SUMMARY_ERRORS_FILE"
           
-          if [ $exit_code -ne 0 ]; then
+            if [ ! -s "$SUMMARY_ERRORS_FILE" ]; then
+              echo "Tests failed. Check full-tests-results-${{ matrix.node-version }}.log for details." >> "$SUMMARY_ERRORS_FILE"
+            fi
             echo ""
-            echo "❌ Tests are failed. Please check summary-tests-errors-${{ matrix.node-version }}.log."
+            echo "❌ Tests are failed. Please check $SUMMARY_ERRORS_FILE."
             echo ""
           else
+            echo "✅ All tests passed successfully." > "$SUMMARY_ERRORS_FILE"
             echo ""
             echo "✅ All tests are passed successfully."
             echo ""
           fi
+          echo "--- Files in current directory (run-tests) ---"
+          ls -l
           
           exit "$exit_code"
 
@@ -157,6 +163,7 @@ jobs:
           TEST_JOB_RESULT_ENV: ${{ needs.run-tests.result }}
           DOCKER_BUILD_JOB_RESULT_ENV: ${{ needs.docker-build.result }}
         run: |
+          OVERALL_ICON_VAR="✅"
           echo "Lint Job Result from ENV: '$LINT_JOB_RESULT_ENV'"
           echo "Test Job Result from ENV: '$TEST_JOB_RESULT_ENV'"
           echo "Docker Build Job Result from ENV: '$DOCKER_BUILD_JOB_RESULT_ENV'"
@@ -182,6 +189,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: all-artifacts
+
+      - name: List downloaded files
+        run: |
+          echo "--- Files in all-artifacts ---"
+          ls -R all-artifacts
 
       - name: Generate Test Report
         run: |
@@ -214,7 +226,7 @@ jobs:
                 echo '```'
               fi
             else
-              echo "⚠️ Lint report not found."
+              echo "⚠️ Lint report file not found at $SUMMARY_LINT_FILE_PATH."
             fi
             printf "\n"
           } >> report.txt
@@ -228,32 +240,36 @@ jobs:
               TEST_REPORTS_FOUND=true
               NODE_VERSION_FROM_FOLDER_NAME=$(basename "$folder" | sed 's/tests-results-//')
 
-              SUMMARY_FILE="$folder/summary-tests-results-${NODE_VERSION_FROM_FOLDER_NAME}.log"
-              ERRORS_FILE="$folder/summary-tests-errors-${NODE_VERSION_FROM_FOLDER_NAME}.log"
-
+              SUMMARY_RESULTS_FILE_PATH="$folder/summary-tests-results-${NODE_VERSION_FROM_FOLDER_NAME}.log"
+              ERRORS_FILE_PATH="$folder/summary-tests-errors-${NODE_VERSION_FROM_FOLDER_NAME}.log" 
+          
               echo "**🔹 Node.js Version:** $NODE_VERSION_FROM_FOLDER_NAME"
               echo ""
 
-              if [[ -f "$SUMMARY_FILE" ]]; then
+              if [[ -f "SUMMARY_RESULTS_FILE_PATH" ]]; then
                 echo "**Test Summary:**"
                 echo '```'
-                cat "$SUMMARY_FILE"
+                cat "SUMMARY_RESULTS_FILE_PATH"
                 echo '```'
               else
                 echo "⚠️ No test summary available for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
 
-              if [[ -f "$ERRORS_FILE" && -s "$ERRORS_FILE" ]]; then
-                echo "**❌ Test Errors:**"
-                echo '```'
-                cat "$ERRORS_FILE"
-                echo '```'
-              elif [[ -f "$ERRORS_FILE" ]]; then # Файл існує, але порожній - значить помилок не було
-                 echo '```'
-                 echo "✅ All tests passed successfully for Node $NODE_VERSION_FROM_FOLDER_NAME."
-                 echo '```'
-              else # Файл навіть не існує
-                echo "⚠️ No specific test error log available for Node $NODE_VERSION_FROM_FOLDER_NAME."
+              if [[ -f "$ERRORS_FILE_PATH" ]]; then
+                if [[ -s "$ERRORS_FILE_PATH" ]] && ! grep -q "✅ All tests passed successfully." "$ERRORS_FILE_PATH"; then
+                  echo "**❌ Test Errors:**"
+                  echo '```'
+                  cat "$ERRORS_FILE_PATH"
+                  echo '```'
+                elif grep -q "✅ All tests passed successfully." "$ERRORS_FILE_PATH"; then
+                  echo '```'
+                  echo "✅ All tests passed successfully for Node $NODE_VERSION_FROM_FOLDER_NAME."
+                  echo '```'
+                elif [ ! -s "$ERRORS_FILE_PATH" ]; then
+                    echo "⚠️ Test error details inconclusive for Node $NODE_VERSION_FROM_FOLDER_NAME (empty error log)."
+                fi
+              else 
+                echo "⚠️ No specific test error log file found for Node $NODE_VERSION_FROM_FOLDER_NAME."
               fi
               echo ""
             done
@@ -278,15 +294,24 @@ jobs:
           fi
 
           COMMENT_MARKER_BASE="# CI Report"
-          COMMENT_ID=$(gh api "repos/:owner/:repo/issues/$PR_NUMBER/comments" --jq '.[] | \
-          select(.user.login=="github-actions[bot]") | \
-          select(.body | contains(\"$COMMENT_MARKER_BASE"\)) | .id'| head -n 1)
+          COMMENT_AUTHOR="github-actions[bot]"
+          echo "Searching for existing PR comment with marker: '$COMMENT_MARKER_BASE_CONTENT' by author '$COMMENT_AUTHOR'"
+          
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login==$author and (.body | contains($marker))) | .id' \
+            --arg author "$COMMENT_AUTHOR" \
+            --arg marker "$COMMENT_MARKER_BASE_CONTENT" | head -n 1)
+          
+          REPORT_CONTENT_FILE="report.txt"
           
           if [[ -n "$COMMENT_ID" ]]; then
             echo "Updating existing CI report comment: $COMMENT_ID"
-            gh api "repos/:owner/:repo/issues/comments/$COMMENT_ID" -X PATCH -f body="$(cat report.txt)"
+            # Передаємо тіло коментаря з файлу через --field або -f body=@filename
+            gh api "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
+              -X PATCH \
+              --field body="$(cat $REPORT_CONTENT_FILE)" 
           else
-            echo "No previous CI report found, creating a new one..."
-            gh pr comment "$PR_NUMBER" --body-file "report.txt"
+            echo "No previous CI report found with the specified marker and author, creating a new one..."
+            gh pr comment "$PR_NUMBER" --body-file "$REPORT_CONTENT_FILE"
           fi
 
