@@ -164,7 +164,7 @@ jobs:
             OVERALL_ICON="❌"
           fi
           
-          echo "Determined Overall Icon" >> $OVERALL_ICON"       
+          echo "Determined Overall Icon" >> $OVERALL_ICON      
 
           echo "OVERALL_ICON=$OVERALL_ICON" >> $GITHUB_OUTPUT
 
