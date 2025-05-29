@@ -209,7 +209,7 @@ jobs:
 
       - name: Generate Test Report
         run: |
-          CI_MARKER_BASE=" CI Report"
+          CI_MARKER_BASE="## CI Report"
           OVERALL_ICON_FROM_STEP="${{ steps.overall_status.outputs.OVERALL_ICON }}"
           CI_MARKER=" $OVERALL_ICON_FROM_STEP $CI_MARKER_BASE - $(TZ="Europe/Kyiv" date +"%H:%M %d/%m/%Y")"
           
@@ -233,7 +233,7 @@ jobs:
                 echo '```'
               else
                 echo '```'
-                echo "✅ No lint issues found."
+                echo "**✅ No lint issues found.**"
                 echo '```'
               fi
             else
@@ -274,7 +274,7 @@ jobs:
                   echo '```'
                 elif grep -q "✅ All tests passed successfully." "$ERRORS_FILE_PATH"; then
                   echo '```'
-                  echo "✅ All tests passed successfully for Node $NODE_VERSION_FROM_FOLDER_NAME."
+                  echo "**✅ All tests passed successfully for Node $NODE_VERSION_FROM_FOLDER_NAME.**"
                   echo '```'
                 elif [ ! -s "$ERRORS_FILE_PATH" ]; then
                     echo "⚠️ Test error details inconclusive for Node $NODE_VERSION_FROM_FOLDER_NAME (empty error log)."
@@ -296,16 +296,20 @@ jobs:
             echo ""
 
             DOCKER_LOG="all-artifacts/docker-results/docker-build-${{ github.sha }}.log"
+  
             if [[ -f "$DOCKER_LOG" ]]; then
-              echo "**Health Check Results:**"
-              echo '```'
-              echo '```log'
-              cat "$DOCKER_LOG"
-              echo '```'
+              if grep -q "❌ Docker build failed" "$DOCKER_LOG"; then
+                echo "**Health Check Results (with errors):**"
+                echo '```log'
+                cat "$DOCKER_LOG"
+                echo '```'
+              else
+                echo "**✅ Docker image built successfully.**"
+              fi
             else
               echo "⚠️ No Docker health check results available."
             fi
-
+          
             printf "\n"
           } >> report.txt
 
@@ -323,7 +327,7 @@ jobs:
           fi
           
           TARGET_COMMENT_AUTHOR="github-actions[bot]" 
-          TARGET_COMMENT_MARKER=" CI Report"
+          TARGET_COMMENT_MARKER="## CI Report"
                     
           JQ_QUERY_STRING=".[] | select(.user.login==\"$TARGET_COMMENT_AUTHOR\" and (.body | contains(\"$TARGET_COMMENT_MARKER\"))) | .id"
                     
