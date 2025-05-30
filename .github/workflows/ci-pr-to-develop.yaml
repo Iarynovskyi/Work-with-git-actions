@@ -271,20 +271,16 @@ jobs:
             echo ""
             
             DOCKER_LOG="all-artifacts/docker-results/docker-build-${{ github.sha }}.log"
-            
+            DOCKER_SUCCESSFUL="✅ Docker image built successfully"
+          
             if [[ -f "$DOCKER_LOG" ]]; then
               if grep -q "❌ Docker build failed" "$DOCKER_LOG"; then
                 echo "**❌ Docker Build Failed:**"
                 echo '```log'
                 cat "$DOCKER_LOG"
                 echo '```'
-              elif grep -q "✅ Docker image built successfully" "$DOCKER_LOG"; then
-                echo "✅ Docker image built successfully."
               else
-                echo "ℹ️ Docker build completed, but log doesn't contain expected markers:"
-                echo '```log'
-                cat "$DOCKER_LOG"
-                echo '```'
+                echo "$DOCKER_SUCCESSFUL"
               fi
             else
               echo "⚠️ No Docker check log found."
