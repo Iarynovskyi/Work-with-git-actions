@@ -222,7 +222,7 @@ jobs:
             else
               echo "$fallback_msg"
             fi
-            echo ""
+            printf "\n"
           }
 
           LINT_SUMMARY_PATH="${{ github.workspace }}/all-artifacts/lint-results/summary-lint-errors.log"
@@ -243,13 +243,14 @@ jobs:
             echo "" >> report.txt
 
             print_section "**Test Summary:**" "⚠️ No test summary for Node $NODE_VERSION_FROM_FOLDER_NAME." "$SUMMARY_RESULTS_FILE_PATH" >> report.txt
-
+            TESTS_SUCCESSFUL="✅ All tests passed successfully."
+          
             if [[ -f "$ERRORS_FILE_PATH" ]]; then
-              if [[ -s "$ERRORS_FILE_PATH" ]] && ! grep -q "✅ All tests passed successfully." "$ERRORS_FILE_PATH"; then
+              if [[ -s "$ERRORS_FILE_PATH" ]] && ! grep -q "$TESTS_SUCCESSFUL" "$ERRORS_FILE_PATH"; then
                 print_section "**❌ Test Errors:**" "" "$ERRORS_FILE_PATH" >> report.txt
-              elif grep -q "✅ All tests passed successfully." "$ERRORS_FILE_PATH"; then
+              elif grep -q "$TESTS_SUCCESSFUL" "$ERRORS_FILE_PATH"; then
                 echo '```' >> report.txt
-                echo "✅ All tests passed successfully for Node $NODE_VERSION_FROM_FOLDER_NAME." >> report.txt
+                echo "$TESTS_SUCCESSFUL for Node $NODE_VERSION_FROM_FOLDER_NAME." >> report.txt
                 echo '```' >> report.txt
               elif [ ! -s "$ERRORS_FILE_PATH" ]; then
                 echo "⚠️ Empty test error log for Node $NODE_VERSION_FROM_FOLDER_NAME." >> report.txt
@@ -265,7 +266,31 @@ jobs:
           fi
 
           DOCKER_LOG="all-artifacts/docker-results/docker-build-${{ github.sha }}.log"
-          print_section "🐳 Docker Health Check" "⚠️ Docker health check log not found." "$DOCKER_LOG" >> report.txt
+          {
+            echo "## 🐳 Docker Health Check"
+            echo ""
+            
+            DOCKER_LOG="all-artifacts/docker-results/docker-build-${{ github.sha }}.log"
+            
+            if [[ -f "$DOCKER_LOG" ]]; then
+              if grep -q "❌ Docker build failed" "$DOCKER_LOG"; then
+                echo "**❌ Docker Build Failed:**"
+                echo '```log'
+                cat "$DOCKER_LOG"
+                echo '```'
+              elif grep -q "✅ Docker image built successfully" "$DOCKER_LOG"; then
+                echo "✅ Docker image built successfully."
+              else
+                echo "ℹ️ Docker build completed, but log doesn't contain expected markers:"
+                echo '```log'
+                cat "$DOCKER_LOG"
+                echo '```'
+              fi
+            else
+              echo "⚠️ No Docker check log found."
+            fi
+            printf "\n"
+          } >> report.txt
 
       - name: Publish Report in GitHub Actions Summary
         run: cat report.txt >> "$GITHUB_STEP_SUMMARY"
