@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
+
 import Home from './page';
 
 it('renders the Home component correctly', async () => {
