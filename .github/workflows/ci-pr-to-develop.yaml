@@ -35,26 +35,25 @@ jobs:
       - name: Run ESLint
         shell: bash
         run: |
-          set -o pipefail
-          
-          npm run lint -- --format compact 2>&1 | tee full-lint.log
-          exit_code=$? 
-          
-          if [ "$exit_code" -ne 0 ]; then
-            echo "❌ ESLint check failed with exit code $exit_code."
-          
-            SUMMARY_FILE="summary-lint-errors.log"
-            grep -iE 'error|warning' full-lint.log > "$SUMMARY_FILE" || true
-          
-            if [ ! -s "$SUMMARY_FILE" ]; then
-              echo "ESLint failed, but no specific error/warning lines were found in the log." > "$SUMMARY_FILE"
-            fi
-          
-            exit "$exit_code"
-          else
-            echo "✅ ESLint check passed successfully."
-            echo "✅ No lint errors or warnings found." > summary-lint-errors.log
+          set +e
+          npm run lint > full-lint.log 2>&1
+          exit_code="${PIPESTATUS[0]}"
+          set -e
+
+          SUMMARY_FILE="summary-lint-errors.log"
+          grep -B 1 -E '\[warn\]|Error:|Warning:' full-lint.log > "$SUMMARY_FILE" || true
+
+          if [ ! -s "$SUMMARY_FILE" ]; then
+            echo "✅ No lint errors found." > "$SUMMARY_FILE"
           fi
+
+          if [ "$exit_code" -ne 0 ]; then
+            echo "❌ ESLint errors found."
+          else
+            echo "✅ No lint errors."
+          fi
+
+          exit "$exit_code"
 
       - name: Upload lint logs
         uses: actions/upload-artifact@v4
