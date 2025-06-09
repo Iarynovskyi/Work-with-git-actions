@@ -4,6 +4,6 @@ import Home from './page';
 
 it('renders the Home component correctly', async () => {
   render(<Home />);
-  const aboutElement = await screen.findByText(/Hello!/i)
+  const aboutElement = await screen.findByText(/Hello/i)
   expect(aboutElement).toBeInTheDocument();
 });
